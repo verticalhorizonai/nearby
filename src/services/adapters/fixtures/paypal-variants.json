@@ -1,0 +1,16 @@
+[
+  {
+    "name": "PayPal sandbox: capture refused, INSTRUMENT_DECLINED (422 shape)",
+    "method": "POST",
+    "url": "/v2/checkout/orders/[^/]+/capture$",
+    "status": 422,
+    "body": { "name": "UNPROCESSABLE_ENTITY", "details": [ { "issue": "INSTRUMENT_DECLINED", "description": "The instrument presented was either declined by the processor or bank, or it can't be used for this payment." } ], "message": "The requested action could not be performed, semantically incorrect, or failed business validation.", "debug_id": "fixture" }
+  },
+  {
+    "name": "PayPal sandbox: capture returns a status other than COMPLETED (DECLINED capture inside a 201)",
+    "method": "POST",
+    "url": "/v2/checkout/orders/[^/]+/capture$",
+    "status": 201,
+    "body": { "id": "5O190127TN364715T", "status": "COMPLETED", "purchase_units": [ { "payments": { "captures": [ { "id": "X", "status": "DECLINED" } ] } } ] }
+  }
+]

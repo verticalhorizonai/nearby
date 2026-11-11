@@ -1,0 +1,113 @@
+/* Nearby theme (spec 3.11.2; REQ-08-02 contrast, REQ-08-03 motion, REQ-08-04 type).
+   Colours are shadcn/ui-style CSS variables, as RGB channels (exact hex values in the comments). */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 246 248 244; /* #F6F8F4 page */
+    --foreground: 20 35 28; /* #14231C text */
+    --card: 255 255 255; /* #FFFFFF surface */
+    --primary: 31 92 69; /* #1F5C45 */
+    --primary-hover: 20 64 47; /* #14402F hover and press */
+    --primary-foreground: 255 255 255;
+    --tint: 227 236 228; /* #E3ECE4 chips, map ground */
+    --accent-pink: 180 38 107; /* #B4266B offer pins, Sample badge */
+    --badge-bg: 247 230 238; /* #F7E6EE behind the Sample badge */
+    --glow: 244 182 63; /* #F4B63F glow behind an offer pin only */
+    --secondary-text: 78 95 87; /* #4E5F57 */
+    --body-text: 51 68 60; /* #33443C body on light panels */
+    --outline-border: 201 212 203; /* #C9D4CB outline buttons */
+    --border: 221 229 221; /* #DDE5DD */
+    --banner: 20 35 28; /* #14231C */
+    --banner-text: 232 239 233; /* #E8EFE9 */
+    --error: 179 38 30; /* #B3261E */
+    --place-dot: 159 176 164; /* #9FB0A4 other places on the map */
+    --map-block: 244 248 243; /* #F4F8F3 pale blocks on the map */
+    --map-park: 207 226 210; /* #CFE2D2 a park on the map (design/home.html) */
+    --primary-raised: 43 107 82; /* #2B6B52 tiles on the primary shopper card (design/choose-a-seat.html) */
+    --on-primary-muted: 221 235 226; /* #DDEBE2 secondary text on primary */
+    --on-dark-muted: 213 224 216; /* #D5E0D8 secondary text on the dark How to test panel */
+    --divider: 234 240 234; /* #EAF0EA hairline inside a merchant card */
+    --radius: 20px;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+    font-size: 16px;
+    line-height: 1.5;
+  }
+
+  a {
+    @apply text-primary hover:text-primary-hover;
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(var(--primary));
+    outline-offset: 2px;
+  }
+}
+
+/* Map pins: hover and focus states (REQ-02-01). */
+.map-pin {
+  cursor: pointer;
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  transition: transform 150ms ease-out;
+}
+.map-pin:hover,
+.map-pin:focus-visible,
+.map-pin[data-active='true'] {
+  transform: scale(1.18);
+}
+.map-pin:focus-visible {
+  outline: none;
+}
+.map-pin:focus-visible .map-pin-ring {
+  stroke: rgb(var(--foreground));
+  stroke-width: 2;
+}
+
+/* Motion: none when the visitor asks for reduced motion (REQ-08-03). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .map-pin:hover,
+  .map-pin:focus-visible,
+  .map-pin[data-active='true'] {
+    transform: none;
+  }
+}
+
+/* The appointment label on Google's map: the same dark chip as the SVG plot (spec 3.11.2 The map). */
+.nearby-map-label {
+  background: rgb(var(--foreground));
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+
+/* Toasts enter and leave in 200 ms like every other transition (spec 3.11.2 Motion; REQ-08-03). Sonner's own default
+   is 400 ms. Under reduced motion the rule above removes the motion altogether. */
+[data-sonner-toast] {
+  transition-duration: 200ms !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-sonner-toast] {
+    transition-duration: 0ms !important;
+  }
+}

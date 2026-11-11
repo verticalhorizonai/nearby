@@ -1,0 +1,13 @@
+node_modules
+dist
+.env
+specs
+tasks
+agents
+tools
+tests
+verify
+verification-reports
+design
+*.md
+!README.md

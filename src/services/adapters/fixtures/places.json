@@ -1,0 +1,15 @@
+[
+  {
+    "name": "Google Places Nearby Search (New): ten nearby places around Old Main (response shape for the five-field mask)",
+    "method": "POST",
+    "url": "^https://places\\.googleapis\\.com/v1/places:searchNearby$",
+    "status": 200,
+    "body": {
+      "places": [
+        { "id": "fixture-place-1", "displayName": { "text": "Corner Cafe", "languageCode": "en" }, "location": { "latitude": 32.2325, "longitude": -110.9528 }, "formattedAddress": "1 Example St, Tucson, AZ", "primaryType": "cafe" },
+        { "id": "fixture-place-2", "displayName": { "text": "Campus Bakery", "languageCode": "en" }, "location": { "latitude": 32.2309, "longitude": -110.9547 }, "formattedAddress": "2 Example St, Tucson, AZ", "primaryType": "bakery" },
+        { "id": "fixture-place-3", "displayName": { "text": "Morning Roasters", "languageCode": "en" }, "location": { "latitude": 32.2331, "longitude": -110.9512 }, "formattedAddress": "3 Example St, Tucson, AZ", "primaryType": "coffee_shop" }
+      ]
+    }
+  }
+]

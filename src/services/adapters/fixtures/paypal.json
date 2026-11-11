@@ -1,0 +1,37 @@
+[
+  {
+    "name": "PayPal sandbox: OAuth client_credentials token (shape of POST /v1/oauth2/token)",
+    "method": "POST",
+    "url": "/v1/oauth2/token$",
+    "status": 200,
+    "body": { "scope": "https://uri.paypal.com/services/payments/payment", "access_token": "A21AA-FIXTURE-SANDBOX-TOKEN", "token_type": "Bearer", "app_id": "APP-FIXTURE", "expires_in": 32400, "nonce": "fixture" }
+  },
+  {
+    "name": "PayPal sandbox: create order, PAYER_ACTION_REQUIRED (shape of POST /v2/checkout/orders with payment_source.paypal)",
+    "method": "POST",
+    "url": "/v2/checkout/orders$",
+    "status": 200,
+    "body": {
+      "id": "5O190127TN36{{seq}}",
+      "status": "PAYER_ACTION_REQUIRED",
+      "payment_source": { "paypal": {} },
+      "links": [
+        { "href": "https://api-m.sandbox.paypal.com/v2/checkout/orders/5O190127TN36{{seq}}", "rel": "self", "method": "GET" },
+        { "href": "https://www.sandbox.paypal.com/checkoutnow?token=5O190127TN36{{seq}}", "rel": "payer-action", "method": "GET" }
+      ]
+    }
+  },
+  {
+    "name": "PayPal sandbox: capture, COMPLETED (shape of POST /v2/checkout/orders/{id}/capture)",
+    "method": "POST",
+    "url": "/v2/checkout/orders/[^/]+/capture$",
+    "status": 201,
+    "body": {
+      "id": "5O190127TN364715T",
+      "status": "COMPLETED",
+      "payment_source": { "paypal": { "email_address": "sandbox-buyer@example.com", "account_status": "VERIFIED" } },
+      "purchase_units": [ { "reference_id": "fixture", "payments": { "captures": [ { "id": "3C679366HH908993F", "status": "COMPLETED", "amount": { "currency_code": "USD", "value": "6.00" } } ] } } ],
+      "links": [ { "href": "https://api-m.sandbox.paypal.com/v2/checkout/orders/5O190127TN364715T", "rel": "self", "method": "GET" } ]
+    }
+  }
+]

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nearby: choose a seat</title>
+</head>
+<body>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1F5C45}a:hover{color:#14402F}
+</style>
+<div style="width: 100%; min-height: 1120px; background: #F6F8F4; color: #14231C; font-family: Inter, system-ui, sans-serif; font-size: 16px; line-height: 1.5">
+
+  <div style="background: #14231C; color: #E8EFE9; font-size: 13px; padding: 9px 24px; text-align: center">
+    Demonstration. Sample merchants and offers, not real businesses. Payments run in the PayPal sandbox; no real money moves.
+  </div>
+
+  <div style="max-width: 1120px; margin: 0 auto; padding: 22px 32px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+    <a href="home.html" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #14231C">
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="15" fill="#1F5C45"></circle><path d="M15 7.5c-3 0-5.4 2.3-5.4 5.2 0 3.8 5.4 9.6 5.4 9.6s5.4-5.8 5.4-9.6c0-2.9-2.4-5.2-5.4-5.2z" fill="#F6F8F4"></path><circle cx="15" cy="12.8" r="2.1" fill="#B4266B"></circle></svg>
+      <span style="font-family: 'Bricolage Grotesque', Inter, sans-serif; font-weight: 700; font-size: 24px; letter-spacing: -0.01em">Nearby</span>
+    </a>
+    <button type="button" style="min-height: 44px; padding: 0 18px; border: 1px solid #C9D4CB; border-radius: 999px; background: #FFFFFF; color: #14231C; font: inherit; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"></path></svg>
+      Reset demo
+    </button>
+  </div>
+
+  <div style="max-width: 1120px; margin: 0 auto; padding: 28px 32px 64px; display: flex; flex-direction: column; gap: 36px">
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <h1 style="margin: 0; font-family: 'Bricolage Grotesque', Inter, sans-serif; font-weight: 800; font-size: 48px; line-height: 1.05; letter-spacing: -0.02em">Choose a seat</h1>
+      <p style="margin: 0; font-size: 18px; color: #33443C; max-width: 640px">A seat is not a sign-in. It only picks which side of Nearby you see, and you can switch at any time.</p>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 14px">
+      <div style="font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #4E5F57">Shopper</div>
+      <a href="appointment-detail.html" style="text-decoration: none; color: #F6F8F4; background: #1F5C45; border-radius: 24px; padding: 28px 32px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 24px">
+        <div style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 8px">
+          <div style="font-family: 'Bricolage Grotesque', Inter, sans-serif; font-weight: 700; font-size: 28px">A shopper's week</div>
+          <div style="color: #DDEBE2">The demo calendar: five appointments around Tucson, Tuesday to Thursday. See the picks for each one and buy in the PayPal sandbox.</div>
+        </div>
+        <div style="flex: 1 1 380px; min-width: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; font-size: 13px">
+          <div style="background: #2B6B52; border-radius: 12px; padding: 10px 12px"><div style="font-weight: 700">Tue 9:30 AM</div><div style="color: #DDEBE2">Client meeting</div></div>
+          <div style="background: #2B6B52; border-radius: 12px; padding: 10px 12px"><div style="font-weight: 700">Tue 12:30 PM</div><div style="color: #DDEBE2">Lunch with a partner</div></div>
+          <div style="background: #2B6B52; border-radius: 12px; padding: 10px 12px"><div style="font-weight: 700">Wed 10:00 AM</div><div style="color: #DDEBE2">Workshop</div></div>
+          <div style="background: #2B6B52; border-radius: 12px; padding: 10px 12px"><div style="font-weight: 700">Wed 2:00 PM</div><div style="color: #DDEBE2">Print pickup</div></div>
+          <div style="background: #2B6B52; border-radius: 12px; padding: 10px 12px"><div style="font-weight: 700">Thu 5:30 PM</div><div style="color: #DDEBE2">Dinner</div></div>
+          <div style="background: #F6F8F4; color: #14231C; border-radius: 12px; padding: 10px 12px; font-weight: 700; display: flex; align-items: center; justify-content: space-between">Open the week
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+          </div>
+        </div>
+      </a>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px">
+        <div style="font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #4E5F57">Merchants</div>
+        <div style="font-size: 14px; color: #4E5F57">Tip: open a merchant in a second window to watch a sale arrive.</div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px">
+
+        <a href="#merchant" style="text-decoration: none; color: #14231C; background: #FFFFFF; border: 1px solid #DDE5DD; border-radius: 20px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px"><div style="font-weight: 700; font-size: 17px">Saguaro Bean Co.</div><span style="flex: none; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #B4266B; background: #F7E6EE; padding: 3px 8px; border-radius: 999px">Sample</span></div>
+          <div style="font-size: 14px; color: #4E5F57">Coffee shop, near the university</div>
+          <div style="margin-top: auto; padding-top: 10px; border-top: 1px solid #EAF0EA; font-size: 14px; display: flex; justify-content: space-between; gap: 8px"><span>Any drink plus pastry</span><span style="font-weight: 700">$6.00</span></div>
+        </a>
+
+        <a href="#merchant" style="text-decoration: none; color: #14231C; background: #FFFFFF; border: 1px solid #DDE5DD; border-radius: 20px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px"><div style="font-weight: 700; font-size: 17px">Fourth Ave Noodle Bar</div><span style="flex: none; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #B4266B; background: #F7E6EE; padding: 3px 8px; border-radius: 999px">Sample</span></div>
+          <div style="font-size: 14px; color: #4E5F57">Lunch, Fourth Avenue</div>
+          <div style="margin-top: auto; padding-top: 10px; border-top: 1px solid #EAF0EA; font-size: 14px; display: flex; justify-content: space-between; gap: 8px"><span>15% off lunch for one</span><span style="font-weight: 700">$1.50 deposit</span></div>
+        </a>
+
+        <a href="#merchant" style="text-decoration: none; color: #14231C; background: #FFFFFF; border: 1px solid #DDE5DD; border-radius: 20px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px"><div style="font-weight: 700; font-size: 17px">Congress Street Desk</div><span style="flex: none; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #B4266B; background: #F7E6EE; padding: 3px 8px; border-radius: 999px">Sample</span></div>
+          <div style="font-size: 14px; color: #4E5F57">Coworking, downtown</div>
+          <div style="margin-top: auto; padding-top: 10px; border-top: 1px solid #EAF0EA; font-size: 14px; display: flex; justify-content: space-between; gap: 8px"><span>Day pass</span><span style="font-weight: 700">$15.00</span></div>
+        </a>
+
+        <a href="#merchant" style="text-decoration: none; color: #14231C; background: #FFFFFF; border: 1px solid #DDE5DD; border-radius: 20px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px"><div style="font-weight: 700; font-size: 17px">Barrio Press Juicery</div><span style="flex: none; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #B4266B; background: #F7E6EE; padding: 3px 8px; border-radius: 999px">Sample</span></div>
+          <div style="font-size: 14px; color: #4E5F57">Juice bar, south of downtown</div>
+          <div style="margin-top: auto; padding-top: 10px; border-top: 1px solid #EAF0EA; font-size: 14px; display: flex; justify-content: space-between; gap: 8px"><span>Second smoothie half off</span><span style="font-weight: 700">$4.00</span></div>
+        </a>
+
+        <a href="#merchant" style="text-decoration: none; color: #14231C; background: #FFFFFF; border: 1px solid #DDE5DD; border-radius: 20px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px"><div style="font-weight: 700; font-size: 17px">Catalina Cuts</div><span style="flex: none; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #B4266B; background: #F7E6EE; padding: 3px 8px; border-radius: 999px">Sample</span></div>
+          <div style="font-size: 14px; color: #4E5F57">Barber, midtown</div>
+          <div style="margin-top: auto; padding-top: 10px; border-top: 1px solid #EAF0EA; font-size: 14px; display: flex; justify-content: space-between; gap: 8px"><span>$5 off a cut</span><span style="font-weight: 700">$20.00</span></div>
+        </a>
+
+        <a href="#merchant" style="text-decoration: none; color: #14231C; background: #FFFFFF; border: 1px solid #DDE5DD; border-radius: 20px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px"><div style="font-weight: 700; font-size: 17px">Rillito Tacos</div><span style="flex: none; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #B4266B; background: #F7E6EE; padding: 3px 8px; border-radius: 999px">Sample</span></div>
+          <div style="font-size: 14px; color: #4E5F57">Dinner, River Road</div>
+          <div style="margin-top: auto; padding-top: 10px; border-top: 1px solid #EAF0EA; font-size: 14px; display: flex; justify-content: space-between; gap: 8px"><span>Free horchata with two tacos</span><span style="font-weight: 700">$9.00</span></div>
+        </a>
+
+        <a href="#merchant" style="text-decoration: none; color: #14231C; background: #FFFFFF; border: 1px solid #DDE5DD; border-radius: 20px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px"><div style="font-weight: 700; font-size: 17px">Sonoran Print Shop</div><span style="flex: none; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #B4266B; background: #F7E6EE; padding: 3px 8px; border-radius: 999px">Sample</span></div>
+          <div style="font-size: 14px; color: #4E5F57">Printing, Speedway</div>
+          <div style="margin-top: auto; padding-top: 10px; border-top: 1px solid #EAF0EA; font-size: 14px; display: flex; justify-content: space-between; gap: 8px"><span>50 business cards</span><span style="font-weight: 700">$12.00</span></div>
+        </a>
+
+        <a href="#merchant" style="text-decoration: none; color: #14231C; background: #FFFFFF; border: 1px solid #DDE5DD; border-radius: 20px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px"><div style="font-weight: 700; font-size: 17px">Mesquite Dog Wash</div><span style="flex: none; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #B4266B; background: #F7E6EE; padding: 3px 8px; border-radius: 999px">Sample</span></div>
+          <div style="font-size: 14px; color: #4E5F57">Pet care, midtown</div>
+          <div style="margin-top: auto; padding-top: 10px; border-top: 1px solid #EAF0EA; font-size: 14px; display: flex; justify-content: space-between; gap: 8px"><span>Self-serve wash</span><span style="font-weight: 700">$10.00</span></div>
+        </a>
+
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

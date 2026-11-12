@@ -2,7 +2,7 @@
 // calendar through the MCP client, filters the events in code (3.2.3), resolves coordinates from the seed (3.3) and
 // stores every event for the session with its skip reason (spec 3.9; build ruling 9).
 import type { Db, DbClient } from '../../models/db.js';
-import type { Appointment, CalendarConnection, SkippedEvent, SkippedEventReason, UpcomingAppointmentsResult } from '../../shared/types.js';
+import type { Appointment, CalendarConnection, SkippedEvent, SkippedEventReason, UpcomingAppointment, UpcomingAppointmentsResult } from '../../shared/types.js';
 import { APPOINTMENT_WINDOW_DAYS } from '../../shared/types.js';
 import type { CalendarSource } from '../calendarMcp/client.js';
 import { DEMO_APPOINTMENT_COORDINATES } from '../../seed/sampleData.js';
@@ -106,7 +106,16 @@ export class AppointmentsService {
     if (!(await this.isConnected(sessionId))) throw notFound('No calendar is connected for this session.');
     await this.syncFromCalendar(sessionId);
     const rows = await this.rows(sessionId);
-    const appointments = rows.filter((r) => r.skip_reason === null).map(toAppointment);
+    // Completed purchases per appointment in this session: the "bought" pill of My week (build ruling 36).
+    const bought = await this.db.query<{ appointment_id: string; n: number }>(
+      `SELECT p.appointment_id, count(*)::int AS n FROM purchases u JOIN proposals p ON p.id = u.proposal_id
+        WHERE p.session_id = $1 AND u.status = 'completed' GROUP BY p.appointment_id`,
+      [sessionId],
+    );
+    const boughtBy = new Map(bought.rows.map((r) => [r.appointment_id, r.n]));
+    const appointments: UpcomingAppointment[] = rows
+      .filter((r) => r.skip_reason === null)
+      .map((r) => ({ ...toAppointment(r), boughtCount: boughtBy.get(r.id) ?? 0 }));
     const skippedEvents: SkippedEvent[] = rows
       .filter((r) => r.skip_reason !== null)
       .map((r) => ({ title: r.title, startsAt: r.starts_at.toISOString(), reason: r.skip_reason as SkippedEventReason }));

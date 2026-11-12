@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { Toaster } from 'sonner';
-import type { Appointment, AppointmentMapData, CalendarConnection, UpcomingAppointmentsResult } from '@/shared/types';
+import type { AppointmentMapData, CalendarConnection, UpcomingAppointmentsResult, UpcomingAppointment } from '@/shared/types';
 import { DEMONSTRATION_BANNER_TEXT, NO_MATCH_MESSAGE } from '@/shared/types';
 import { AppRoutes } from '@/client/App';
 
@@ -25,7 +25,7 @@ function stubFetch(routes: Record<string, Handler>) {
 }
 const ok = (data: unknown): Handler => () => ({ status: 200, body: { success: true, data } });
 
-const appt = (id: string, title: string, startsAt: string, endsAt: string, lat: number, lng: number, enabled = true): Appointment => ({
+const appt = (id: string, title: string, startsAt: string, endsAt: string, lat: number, lng: number, enabled = true): UpcomingAppointment => ({
   id,
   title,
   startsAt,
@@ -35,6 +35,7 @@ const appt = (id: string, title: string, startsAt: string, endsAt: string, lat: 
   enabled,
   createdAt: '2026-11-11T00:00:00.000Z',
   updatedAt: '2026-11-11T00:00:00.000Z',
+  boughtCount: 0,
 });
 
 const A1 = appt('11111111-1111-4111-8111-111111111111', 'Client meeting', '2026-11-17T16:30:00.000Z', '2026-11-17T17:30:00.000Z', 32.2319, -110.9535);
@@ -172,6 +173,35 @@ describe('my week', () => {
     await waitFor(() => expect(picksCalls()).toEqual([`/api/appointments/${A1.id}/picks`]));
     fireEvent.click(await screen.findByRole('switch', { name: 'Find picks for Lunch with a partner' }));
     await waitFor(() => expect(picksCalls()).toEqual([`/api/appointments/${A1.id}/picks`, `/api/appointments/${A2.id}/picks`]));
+  });
+
+  it('shows "1 bought" or "2 bought" beside a stop\'s title only when picks were bought (build ruling 36)', async () => {
+    stubFetch({
+      'GET /api/calendar/connection': ok(connection),
+      'GET /api/appointments/upcoming': ok({ ...week, appointments: [{ ...A1, boughtCount: 1 }, { ...A2, boughtCount: 0 }] }),
+    });
+    renderAt('/week');
+    const pills = await screen.findAllByTestId('bought-pill');
+    expect(pills).toHaveLength(1);
+    expect(pills[0]).toHaveTextContent('1 bought');
+    expect(pills[0]).toHaveTextContent('1 pick bought for this stop');
+    expect(pills[0]).toHaveClass('rounded-full', 'bg-tint', 'text-primary', 'flex-none');
+    const rows = screen.getAllByTestId('appointment-row');
+    expect(rows[0]).toContainElement(pills[0]);
+    expect(rows[1].querySelector('[data-testid="bought-pill"]')).toBeNull();
+    // the link that opens the stop is named with it
+    expect(screen.getByRole('link', { name: /Client meeting.*1 pick bought for this stop/ })).toBeInTheDocument();
+  });
+
+  it('shows "2 bought" with its spoken form', async () => {
+    stubFetch({
+      'GET /api/calendar/connection': ok(connection),
+      'GET /api/appointments/upcoming': ok({ ...week, appointments: [{ ...A1, boughtCount: 2 }] }),
+    });
+    renderAt('/week');
+    const pill = await screen.findByTestId('bought-pill');
+    expect(pill).toHaveTextContent('2 bought');
+    expect(pill).toHaveTextContent('2 picks bought for this stop');
   });
 
   it('sends a visitor with no calendar to Connect', async () => {

@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import type { Appointment, CalendarConnection, UpcomingAppointmentsResult } from '@/shared/types';
+import type { Appointment, CalendarConnection, UpcomingAppointment, UpcomingAppointmentsResult } from '@/shared/types';
 import { PageShell } from '@/components/layout/PageShell';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { AppointmentToggle } from '@/components/appointments/AppointmentToggle';
@@ -17,8 +17,8 @@ import { api, useApiQuery } from '@/hooks/useApi';
 import { prefetchPicks, usePicksPrefetch } from '@/hooks/usePicksPrefetch';
 import { SKIP_REASON_TEXT, dayKey, formatDayHeading, formatEventWhen, formatTimeRange } from '@/client/format';
 
-function groupByDay(appointments: Appointment[]): { key: string; heading: string; items: Appointment[] }[] {
-  const groups: { key: string; heading: string; items: Appointment[] }[] = [];
+function groupByDay(appointments: UpcomingAppointment[]): { key: string; heading: string; items: UpcomingAppointment[] }[] {
+  const groups: { key: string; heading: string; items: UpcomingAppointment[] }[] = [];
   for (const a of [...appointments].sort((x, y) => x.startsAt.localeCompare(y.startsAt))) {
     const key = dayKey(a.startsAt);
     const last = groups[groups.length - 1];
@@ -47,7 +47,7 @@ export function MyWeekPage() {
     week.setData((prev) => (prev ? { ...prev, appointments: prev.appointments.map((a) => (a.id === id ? { ...a, enabled } : a)) } : prev));
 
   // REQ-01-03: optimistic toggle; the save failing puts it back.
-  const toggle = async (a: Appointment, next: boolean) => {
+  const toggle = async (a: UpcomingAppointment, next: boolean) => {
     setEnabled(a.id, next);
     setSaving((s) => new Set(s).add(a.id));
     try {
@@ -121,7 +121,19 @@ export function MyWeekPage() {
                       >
                         <span className="min-w-0 flex-1">
                           <span className="block text-[13px] font-semibold text-secondary-text">{formatTimeRange(a.startsAt, a.endsAt)}</span>
-                          <span className="block text-[17px] font-bold leading-snug">{a.title}</span>
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="min-w-0 truncate text-[17px] font-bold leading-snug">{a.title}</span>
+                            {a.boughtCount > 0 && (
+                              // Picks bought for this stop (build ruling 36): the seat chip's pill style; one line, so the
+                              // card keeps its height; the visible text is short, the spoken one says what it means.
+                              <span data-testid="bought-pill" className="flex-none rounded-full bg-tint px-2 py-0.5 text-xs font-semibold leading-4 text-primary">
+                                <span aria-hidden="true">{a.boughtCount} bought</span>
+                                <span className="sr-only">
+                                  {a.boughtCount === 1 ? '1 pick bought for this stop' : `${a.boughtCount} picks bought for this stop`}
+                                </span>
+                              </span>
+                            )}
+                          </span>
                           <span className="block truncate text-sm text-secondary-text">{a.address}</span>
                           {!a.enabled && <span className="block text-[13px] text-secondary-text">Off. Nearby skips this one.</span>}
                         </span>

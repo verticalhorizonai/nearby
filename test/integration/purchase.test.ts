@@ -117,6 +117,53 @@ describe('Yes, Pay, return: one purchase from Yes to the receipt', () => {
   });
 });
 
+describe('picks bought per stop on My week (build ruling 36)', () => {
+  const bought = async (title: string) =>
+    (await t.request('GET', '/api/appointments/upcoming')).json.data.appointments.find((a: { title: string }) => a.title === title).boughtCount;
+
+  it('0 with no purchase; a cancelled or failed one does not count; 1 after a completed purchase; 0 after Reset demo', async () => {
+    expect(await bought('Client meeting')).toBe(0);
+    // cancelled at PayPal
+    const first = await acceptFirst();
+    const proposalId = first.proposalId;
+    let token = first.token;
+    await t.request('POST', '/api/purchases', { proposalId, confirmationToken: token });
+    await t.request('POST', `/api/pay/cancel/${proposalId}`);
+    expect(await bought('Client meeting')).toBe(0);
+    // capture not COMPLETED: failed
+    token = (await t.request('POST', `/api/proposals/${proposalId}/accept`)).json.data.confirmationToken;
+    await t.request('POST', '/api/purchases', { proposalId, confirmationToken: token });
+    t.paypalTransport.queue((paypalVariants as Fixture[])[0]);
+    await t.request('POST', `/api/pay/return/${proposalId}`);
+    expect(await bought('Client meeting')).toBe(0);
+    // created but not yet returned from PayPal
+    token = (await t.request('POST', `/api/proposals/${proposalId}/accept`)).json.data.confirmationToken;
+    await t.request('POST', '/api/purchases', { proposalId, confirmationToken: token });
+    expect(await bought('Client meeting')).toBe(0);
+    // completed
+    await t.request('POST', `/api/pay/return/${proposalId}`);
+    expect(await bought('Client meeting')).toBe(1);
+    expect(await bought('Lunch with a partner')).toBe(0);
+    // another session sees its own count only
+    await t.request('POST', '/api/calendar/demo-connection', undefined, {}, 'b');
+    const other = await t.request('GET', '/api/appointments/upcoming', undefined, {}, 'b');
+    expect(other.json.data.appointments.every((a: { boughtCount: number }) => a.boughtCount === 0)).toBe(true);
+    // Reset demo
+    await t.request('POST', '/api/demo/reset', {});
+    expect(await bought('Client meeting')).toBe(0);
+  });
+
+  it('2 when both picks of a stop are bought', async () => {
+    const d = await picksFor('Client meeting');
+    for (const p of d.picks) {
+      const token = (await t.request('POST', `/api/proposals/${p.proposalId}/accept`)).json.data.confirmationToken;
+      await t.request('POST', '/api/purchases', { proposalId: p.proposalId, confirmationToken: token });
+      await t.request('POST', `/api/pay/return/${p.proposalId}`);
+    }
+    expect(await bought('Client meeting')).toBe(2);
+  });
+});
+
 describe('the token gate: 403 and nothing at PayPal', () => {
   const orders = () => t.paypalTransport.calls.filter((c) => c.url.endsWith('/v2/checkout/orders')).length;
 

@@ -289,9 +289,16 @@ export interface SkippedEvent {
   reason: SkippedEventReason;
 }
 
+/** An appointment in My week, with how many of its picks this browser session has bought (build ruling 36). */
+export interface UpcomingAppointment extends Appointment {
+  /** Completed purchases for this appointment in this browser session (0, 1 or 2). Created, approved and failed
+   * purchases do not count. */
+  boughtCount: number;
+}
+
 export interface UpcomingAppointmentsResult {
   /** Appointments in the next 7 days with a usable address. */
-  appointments: Appointment[];
+  appointments: UpcomingAppointment[];
   skippedEvents: SkippedEvent[];
 }
 

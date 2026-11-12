@@ -11,6 +11,7 @@ import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/components/ui/cn';
 import { usePublicConfig } from '@/hooks/usePublicConfig';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { MCP_PATH } from '@/shared/types';
 
 const label = 'text-label uppercase text-secondary-text';
 const sectionHeading = 'font-display text-4xl font-bold leading-tight tracking-[-0.015em]'; // 36 px at every width (3.11.2)
@@ -47,6 +48,8 @@ export function HomePage() {
   const config = usePublicConfig();
   const toHow = useScrollTo('how');
   const toSample = useScrollTo('sample');
+  // The MCP server lives on this same origin (build ruling 42).
+  const mcpAddress = `${typeof window === 'undefined' ? '' : window.location.origin}${MCP_PATH}`;
   const tryDemo = cn(buttonVariants(), 'no-underline hover:text-primary-foreground text-primary-foreground');
 
   return (
@@ -198,6 +201,42 @@ export function HomePage() {
           </Link>
         </section>
       </div>
+
+      {/* Bring your own agent (build ruling 42): the public MCP server and what an assistant can and cannot do. */}
+      <section aria-labelledby="agent-heading" className="mx-auto flex max-w-content flex-col gap-4 px-4 pb-20 sm:px-8" data-testid="bring-your-own-agent">
+        <div className="flex flex-col gap-2">
+          <p className={label}>For AI assistants</p>
+          <h2 id="agent-heading" className={sectionHeading}>
+            Bring your own agent
+          </h2>
+        </div>
+        <p className="max-w-[720px] text-body-text">
+          Any assistant that speaks MCP can search Nearby&rsquo;s sample offers. Add this address to your MCP client as a Streamable HTTP
+          server; there is no sign-in.
+        </p>
+        <code className="block max-w-full self-start overflow-x-auto rounded-panel border border-border bg-card px-4 py-3 text-[15px] font-semibold" data-testid="mcp-address">
+          {mcpAddress}
+        </code>
+        <ul className="m-0 flex max-w-[720px] list-none flex-col gap-3 p-0 text-body-text">
+          <li className="flex gap-3">
+            <Dot tone="primary" />
+            <span>
+              <strong className="font-semibold text-foreground">find_offers_near</strong> gives the offers Nearby would show for a place and a
+              start time, matched by the same rules as the app.
+            </span>
+          </li>
+          <li className="flex gap-3">
+            <Dot tone="primary" />
+            <span>
+              <strong className="font-semibold text-foreground">get_offer</strong> gives one offer&rsquo;s details.
+            </span>
+          </li>
+          <li className="flex gap-3">
+            <Dot tone="accent" />
+            <span>Neither tool can buy. Your assistant hands you a link; you open it, tap Yes in Nearby and approve the payment on PayPal.</span>
+          </li>
+        </ul>
+      </section>
 
       {/* 6. Footer */}
       <footer className="border-t border-border">

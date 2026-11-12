@@ -18,6 +18,7 @@ import { PurchaseService } from './services/purchases/purchaseService.js';
 import type { PickChooser } from './services/agent/chooser.js';
 import { AgentLoop } from './services/agent/agentLoop.js';
 import { AgentRateLimiter } from './services/agent/rateLimiter.js';
+import { AgentActivity } from './services/agent/agentActivity.js';
 import type { AnthropicAdapter } from './services/agent/anthropicAdapter.js';
 import type { PlacesAdapter } from './services/places/placesAdapter.js';
 import { MapService } from './services/map/mapService.js';
@@ -28,6 +29,12 @@ import { registerPurchaseRoutes } from './api/purchaseRoutes.js';
 import { registerConfigRoutes } from './api/configRoutes.js';
 import { registerMerchantRoutes } from './api/merchantRoutes.js';
 import { MerchantDirectory } from './services/merchants/merchantDirectory.js';
+import { registerMcpRoutes } from './api/mcpRoutes.js';
+import { registerHandoffRoutes } from './api/handoffRoutes.js';
+import { OfferSearch } from './services/offersMcp/offerSearch.js';
+import { WindowLimiter } from './services/offersMcp/windowLimiter.js';
+import { HandoffService } from './services/handoff/handoffService.js';
+import { HANDOFFS_PER_SESSION_PER_HOUR, MCP_REQUESTS_PER_ADDRESS_PER_MINUTE } from './shared/types.js';
 
 export interface AppDeps {
   db: Db;
@@ -55,6 +62,12 @@ export interface AppServices {
   merchants: MerchantDirectory;
   map: MapService;
   rateLimiter: AgentRateLimiter;
+  /** The read-only offer search behind /mcp (build ruling 42). */
+  offerSearch: OfferSearch;
+  /** The checkout handoff (build ruling 42). */
+  handoff: HandoffService;
+  /** The agent's runs in flight, step by step (build ruling 43). */
+  activity: AgentActivity;
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance & { services: AppServices }> {
@@ -67,15 +80,19 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance & { servi
   const chooser =
     deps.chooser ??
     new AgentLoop({ db: deps.db, calendar: deps.calendar, places: placesCache, anthropic: deps.anthropic, limiter: rateLimiter, isDisabled: deps.isAgentDisabled ?? (() => isAgentDisabled()), now });
-  const picks = new PicksService(deps.db, appointments, chooser, now, log);
+  const activity = new AgentActivity(now);
+  const picks = new PicksService(deps.db, appointments, chooser, now, log, activity);
   const services: AppServices = {
     appointments,
     picks,
     rateLimiter,
+    activity,
     map: new MapService(deps.db, picks, placesCache, !!deps.config.googleMapsBrowserKey, log),
     proposals: new ProposalService(deps.db, now),
     purchases: new PurchaseService(deps.db, deps.paypal, deps.config.appBaseUrl, now, log),
     merchants: new MerchantDirectory(deps.db, deps.calendar, now),
+    offerSearch: new OfferSearch(deps.db, deps.config.appBaseUrl, now),
+    handoff: new HandoffService(deps.db, new WindowLimiter(HANDOFFS_PER_SESSION_PER_HOUR, 3_600_000, () => now().getTime()), now),
   };
 
   await app.register(cookie);
@@ -101,6 +118,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance & { servi
   registerPurchaseRoutes(app, services);
   registerConfigRoutes(app, deps.config);
   registerMerchantRoutes(app, services, deps.db);
+  registerHandoffRoutes(app, services.handoff);
+  registerMcpRoutes(app, services.offerSearch, new WindowLimiter(MCP_REQUESTS_PER_ADDRESS_PER_MINUTE, 60_000, () => now().getTime()));
 
   const clientDir = deps.clientDir ?? fileURLToPath(new URL('../client/', import.meta.url));
   const hasClient = existsSync(`${clientDir}/index.html`);

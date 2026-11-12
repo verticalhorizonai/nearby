@@ -9,6 +9,10 @@ import { applyLazyTransitions } from '../proposals/lifecycle.js';
 import { loadAppointmentProposals, toPick } from '../proposals/proposalRows.js';
 import { matchOffers, type MatchOffer, type MatchResult } from '../matching/matcher.js';
 import type { ChooseResult, PickChooser } from '../agent/chooser.js';
+import type { AgentActivity, RunReporter } from '../agent/agentActivity.js';
+
+/** What the model is told a handed-over stop is called, in place of the link's title (build ruling 42). */
+export const ASSISTANT_STOP_TITLE_FOR_MODEL = 'A stop the person\'s assistant added';
 
 interface OfferRow {
   id: string;
@@ -50,6 +54,7 @@ export class PicksService {
     private readonly chooser: PickChooser,
     private readonly now: () => Date = () => new Date(),
     private readonly log: (msg: string) => void = () => undefined,
+    private readonly activity?: AgentActivity,
   ) {}
 
   /** Candidates for one of the session's appointments (3.5), excluding offers this session bought for it. */
@@ -88,11 +93,29 @@ export class PicksService {
     const { match } = await this.candidatesFor(sessionId, appointmentId);
     if (match.shown.length === 0) return { appointmentId, picks: [], noMatch: true };
 
+    // Signs of life (build ruling 43): the run is in flight from here until its picks are saved.
+    const reporter = this.activity?.begin(sessionId, appointmentId);
+    try {
+      return await this.chooseAndSave(sessionId, appointmentId, appt, match, reporter);
+    } finally {
+      reporter?.end();
+    }
+  }
+
+  private async chooseAndSave(
+    sessionId: string,
+    appointmentId: string,
+    appt: Awaited<ReturnType<AppointmentsService['get']>>,
+    match: MatchResult,
+    reporter: RunReporter | undefined,
+  ): Promise<AppointmentPicks> {
     const result: ChooseResult = await this.chooser.choose({
       sessionId,
       appointment: {
         id: appt.id,
-        title: appt.title,
+        // A stop an outside assistant handed over keeps its link title as data for the page only: the model never
+        // reads it (build ruling 42).
+        title: appt.added_by === 'assistant' ? ASSISTANT_STOP_TITLE_FOR_MODEL : appt.title,
         startsAt: appt.starts_at,
         endsAt: appt.ends_at,
         locationText: appt.location_text ?? '',
@@ -102,6 +125,7 @@ export class PicksService {
       candidates: match.candidates,
       shown: match.shown,
       radiusMeters: match.radiusMeters,
+      reporter,
     });
     if (result.source === 'fallback') {
       // One server log line whenever a fallback is used, naming which (kickoff, "The demo never depends on the model").

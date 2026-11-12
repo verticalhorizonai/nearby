@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS appointments (
   enabled          BOOLEAN          NOT NULL DEFAULT TRUE,               -- enabled (FALSE = excluded from picks)
   created_at       TIMESTAMPTZ      NOT NULL DEFAULT now(),              -- createdAt
   updated_at       TIMESTAMPTZ      NOT NULL DEFAULT now(),              -- updatedAt (trigger-maintained)
+  added_by         VARCHAR(16)      NOT NULL DEFAULT 'calendar',         -- addedBy (AppointmentAddedBy; build ruling 42, migration 001)
   CONSTRAINT pk_appointments                PRIMARY KEY (id),
   CONSTRAINT uq_appointments_session_event  UNIQUE (session_id, source_event_id),
   CONSTRAINT chk_appointments_title_nonblank   CHECK (char_length(btrim(title)) > 0),
@@ -103,7 +104,9 @@ CREATE TABLE IF NOT EXISTS appointments (
   CONSTRAINT chk_appointments_skip_reason
     CHECK (skip_reason IS NULL OR skip_reason IN ('no_address', 'video_call', 'all_day', 'no_coordinates', 'out_of_area')),
   CONSTRAINT chk_appointments_usable
-    CHECK (skip_reason IS NOT NULL OR (location_text IS NOT NULL AND char_length(btrim(location_text)) > 0 AND location_lat IS NOT NULL AND location_lng IS NOT NULL))
+    CHECK (skip_reason IS NOT NULL OR (location_text IS NOT NULL AND char_length(btrim(location_text)) > 0 AND location_lat IS NOT NULL AND location_lng IS NOT NULL)),
+  -- AppointmentAddedBy: 'calendar' | 'assistant' (a stop an outside assistant handed over; build ruling 42)
+  CONSTRAINT chk_appointments_added_by CHECK (added_by IN ('calendar', 'assistant'))
 );
 
 -- Supports the 7-day window query (APPOINTMENT_WINDOW_DAYS = 7).
@@ -258,8 +261,8 @@ CREATE TABLE IF NOT EXISTS proposals (
   CONSTRAINT chk_proposals_reason_nonblank CHECK (char_length(btrim(reason)) > 0),
   CONSTRAINT chk_proposals_distance_nonnegative CHECK (distance_meters >= 0),
 
-  -- PickSource: 'agent' | 'fallback'
-  CONSTRAINT chk_proposals_source CHECK (source IN ('agent', 'fallback')),
+  -- PickSource: 'agent' | 'fallback' | 'assistant' (build ruling 42, migration 001)
+  CONSTRAINT chk_proposals_source CHECK (source IN ('agent', 'fallback', 'assistant')),
 
   -- ProposalStatus: 'proposed' | 'accepted' | 'declined' | 'expired'
   CONSTRAINT chk_proposals_status
@@ -445,7 +448,8 @@ $do$;
 -- Unions backed by a column CHECK:
 --   ProposalStatus -> proposals.status       : 'proposed','accepted','declined','expired'
 --   PurchaseStatus -> purchases.status       : 'created','approved','completed','failed'
---   PickSource     -> proposals.source       : 'agent','fallback'
+--   PickSource     -> proposals.source       : 'agent','fallback','assistant'
+--   AppointmentAddedBy -> appointments.added_by : 'calendar','assistant'
 --   DayOfWeek      -> offers.valid_days[]    : 'mon','tue','wed','thu','fri','sat','sun'
 --
 -- Unions with no column, and therefore no CHECK:
@@ -461,6 +465,7 @@ $do$;
 --     1. DELETE FROM purchases WHERE <scope>
 --     2. DELETE FROM proposals WHERE <scope>
 --     3. UPDATE appointments SET enabled = TRUE WHERE enabled = FALSE
+--     4. DELETE FROM appointments WHERE <scope> AND added_by = 'assistant' (build ruling 42)
 --     <scope> is pending team-lead decision (§8 item 1).
 --     merchants, offers and seeded appointments are never deleted.
 --   Seed script:

@@ -22,6 +22,22 @@ export const MAX_TURNS = 8;
 /** The tools given to Claude (3.6.2). There is no payment tool. */
 export const AGENT_TOOL_NAMES = ['list_upcoming_appointments', 'find_places_near', 'find_offer_candidates', 'propose_offer'] as const;
 
+/** Each tool call in plain words, as the shopper sees it while the run is in flight (build ruling 43). */
+export function stepLabel(tool: string, candidateCount: number): string | null {
+  switch (tool) {
+    case 'list_upcoming_appointments':
+      return 'Reading your week';
+    case 'find_places_near':
+      return 'Looking up places';
+    case 'find_offer_candidates':
+      return candidateCount === 1 ? 'Checking 1 offer' : `Checking ${candidateCount} offers`;
+    case 'propose_offer':
+      return 'Choosing';
+    default:
+      return null; // a name the model made up is not a step
+  }
+}
+
 export const SYSTEM_PROMPT = [
   'You help one person find local offers near their upcoming appointments.',
   'Use only offers returned by find_offer_candidates. Never invent a merchant, price or time.',
@@ -51,6 +67,7 @@ export class AgentLoop implements PickChooser {
   constructor(private readonly d: AgentDeps) {}
 
   private fallback(ctx: ChooseContext, cause: FallbackCause): ChooseResult {
+    ctx.reporter?.fallback();
     return { source: 'fallback', picks: fallbackPicks(ctx.shown, ctx.appointment.startsAt), fallbackCause: cause };
   }
 
@@ -119,6 +136,9 @@ export class AgentLoop implements PickChooser {
   }
 
   private async callTool(ctx: ChooseContext, name: string, input: Record<string, unknown>): Promise<ToolOutput> {
+    // Signs of life (build ruling 43): the call is reported as it starts, in the order the calls are made.
+    const label = stepLabel(name, this.eligible(ctx).length);
+    if (label) ctx.reporter?.step(name, label);
     switch (name) {
       case 'list_upcoming_appointments': {
         const events = await this.d.calendar.listUpcomingAppointments(typeof input.days_ahead === 'number' ? input.days_ahead : undefined);

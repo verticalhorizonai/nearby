@@ -94,7 +94,7 @@ describe('the live sales feed and Reset demo', () => {
     expect(r.json.data.appointmentsReenabled).toBe(1);
     expect(r.json.data.proposalsRemoved).toBeGreaterThan(0);
     expect(t.paypalTransport.calls.length).toBe(calls);
-    expect((await t.request('POST', '/api/demo/reset', {})).json.data).toEqual({ proposalsRemoved: 0, purchasesRemoved: 0, appointmentsReenabled: 0 });
+    expect((await t.request('POST', '/api/demo/reset', {})).json.data).toEqual({ proposalsRemoved: 0, purchasesRemoved: 0, appointmentsReenabled: 0, assistantStopsRemoved: 0 });
     expect((await t.db.query('SELECT count(*)::int AS n FROM merchants')).rows[0].n).toBe(8);
     const otherFeed = await t.request('GET', `/api/merchants/${SAMPLE_MERCHANTS[5].id}/sales-feed`);
     expect(otherFeed.json.data.items).toHaveLength(1);

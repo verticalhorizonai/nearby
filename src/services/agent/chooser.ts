@@ -3,6 +3,7 @@
 import type { Candidate } from '../matching/matcher.js';
 import type { ChosenPick } from './fallback.js';
 import type { PickSource } from '../../shared/types.js';
+import type { RunReporter } from './agentActivity.js';
 
 export interface ChooseContext {
   sessionId: string;
@@ -12,6 +13,8 @@ export interface ChooseContext {
   /** The top two with score >= 0.35 (3.5.3): what the fallback shows. */
   shown: Candidate[];
   radiusMeters: number;
+  /** Where the run reports each tool call as it starts (build ruling 43). */
+  reporter?: RunReporter;
 }
 
 export type FallbackCause = 'kill_switch' | 'rate_limit' | 'model_error' | 'model_timeout' | 'invalid_output' | 'no_model_configured';

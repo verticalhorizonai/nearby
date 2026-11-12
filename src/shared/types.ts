@@ -45,7 +45,14 @@ export type SkippedEventReason = 'no_address' | 'video_call' | 'all_day' | 'no_c
  * kill switch is on, the model call fails or times out, output validation fails, or a
  * rate limit is exceeded.
  */
-export type PickSource = 'agent' | 'fallback';
+/** 'assistant': the pick came through the checkout link an outside assistant handed over (build ruling 42). */
+export type PickSource = 'agent' | 'fallback' | 'assistant';
+
+/**
+ * Who put an appointment in the session (build ruling 42): the connected calendar, or the person's own assistant
+ * through a checkout link from the Nearby MCP server. My week labels the second "Added by your assistant".
+ */
+export type AppointmentAddedBy = 'calendar' | 'assistant';
 
 /**
  * How the appointment map is rendered (REQ-02-01).
@@ -84,6 +91,10 @@ export type ApiErrorCode =
   | 'confirmation_token_invalid'
   /** HTTP 403. A state-changing request whose Origin is not APP_BASE_URL (spec 3.9). */
   | 'forbidden_origin'
+  /** HTTP 429. Too many checkout handoffs from this browser session in the last hour (build ruling 42). */
+  | 'rate_limited'
+  /** HTTP 409. A handed-over offer no longer fits that place and time (build ruling 42). */
+  | 'offer_unavailable'
   | 'internal_error';
 
 /** Offer category (spec 3.8: coffee, lunch, dinner, juice or snack, service); time fit by category (REQ-02-07). */
@@ -257,6 +268,8 @@ export interface Appointment {
   location: GeoPoint;
   /** False means the shopper turned the appointment off. It is then excluded from picks (REQ-01-03). */
   enabled: boolean;
+  /** The calendar, or the person's assistant through a checkout handoff (build ruling 42). */
+  addedBy: AppointmentAddedBy;
   createdAt: string;
   updatedAt: string;
 }
@@ -768,6 +781,8 @@ export interface ResetDemoResult {
   proposalsRemoved: number;
   purchasesRemoved: number;
   appointmentsReenabled: number;
+  /** Stops an outside assistant added through a checkout handoff; removed with their picks (build ruling 42). */
+  assistantStopsRemoved: number;
 }
 
 export type ResetDemoResponse = ApiResponse<ResetDemoResult>;
@@ -784,3 +799,105 @@ export type ResetDemoResponse = ApiResponse<ResetDemoResult>;
 // observed through Pick.source and server logs. No operational endpoints are defined
 // for them.
 // ============================================================================
+// ============================================================================
+// OFFERS FOR ANY AGENT: THE MCP SERVER AND THE CHECKOUT HANDOFF (build ruling 42)
+// ============================================================================
+
+/** Path of the public MCP server (Streamable HTTP, stateless, read-only, no sign-in). */
+export const MCP_PATH = '/mcp' as const;
+/** The two read-only tools of the Nearby MCP server. Neither can buy. */
+export const OFFERS_MCP_TOOL_NAMES = ['find_offers_near', 'get_offer'] as const;
+export type OffersMcpToolName = typeof OFFERS_MCP_TOOL_NAMES[number];
+/** Requests to /mcp per client address per minute, counted in the process. */
+export const MCP_REQUESTS_PER_ADDRESS_PER_MINUTE = 60 as const;
+/** Checkout handoffs (POST /api/handoff) per browser session per hour. */
+export const HANDOFFS_PER_SESSION_PER_HOUR = 10 as const;
+/** A stop an assistant hands over has no end time; it is matched as an appointment of this length. */
+export const ASSISTANT_STOP_MINUTES = 60 as const;
+/** The longest radius find_offers_near accepts, in miles: the matching never looks past 3 miles (3.5.1). */
+export const MCP_MAX_RADIUS_MILES = 3 as const;
+/** A title in a checkout link is data: text only, at most this many characters. */
+export const HANDOFF_TITLE_MAX_LENGTH = 80 as const;
+/** The stop's title when the link carries none. */
+export const HANDOFF_DEFAULT_TITLE = 'Stop from your assistant' as const;
+
+/**
+ * The checkout link's query (GET /handoff page, GET /api/handoff, body of POST /api/handoff): the offer, the place and
+ * the start time the assistant searched with, and an optional title. Strings, as they arrive in a URL.
+ */
+export interface HandoffParams {
+  offer: string;
+  lat: string;
+  lng: string;
+  /** ISO 8601 with an offset, e.g. 2026-11-17T09:30:00-07:00. */
+  at: string;
+  title?: string;
+}
+
+/** GET /api/handoff: what the handoff page shows. Read-only: nothing is written. */
+export interface HandoffPreview {
+  offerId: string;
+  offerTitle: string;
+  merchantName: string;
+  merchantIsSample: boolean;
+  /** Integer cents, read from the database (never from the link). */
+  priceCents: number;
+  isDeposit: boolean;
+  validWindow: ValidWindow;
+  /** The stop's title as it will be stored: text only, at most HANDOFF_TITLE_MAX_LENGTH characters. */
+  title: string;
+  address: string;
+  location: GeoPoint;
+  startsAt: string;
+  endsAt: string;
+  /** False when the offer no longer fits this place and time; the page then says so and offers My week. */
+  fits: boolean;
+  /** Why it does not fit, in plain words; null when it fits. */
+  note: string | null;
+}
+
+export type HandoffPreviewResponse = ApiResponse<HandoffPreview>;
+
+/** POST /api/handoff ("Review in Nearby"): the stop and its proposed pick in this browser's session. */
+export interface HandoffResult {
+  appointmentId: string;
+  proposalId: string;
+  /** False when the same link had already been handed over in this session (idempotent). */
+  created: boolean;
+}
+
+export type HandoffResponse = ApiResponse<HandoffResult>;
+
+// ============================================================================
+// SIGNS OF LIFE: THE AGENT'S RUN, LIVE (build ruling 43)
+// ============================================================================
+
+/** 'agent': Claude is running its tools. 'fallback': the run went straight to the fallback and has no steps. */
+export type AgentRunMode = 'agent' | 'fallback';
+
+/** One of the agent's real tool calls, recorded as it starts, in plain words ("Checking 3 offers"). */
+export interface AgentRunStep {
+  /** The tool's name, e.g. find_offer_candidates. */
+  tool: string;
+  label: string;
+  startedAt: string;
+}
+
+/** A run of the agent for one of this session's stops, while it is in flight. Held in the process only. */
+export interface AgentRun {
+  appointmentId: string;
+  mode: AgentRunMode;
+  startedAt: string;
+  /** In the order the tool calls started; empty for a fallback run. */
+  steps: AgentRunStep[];
+}
+
+/** GET /api/agent/runs: this session's runs in flight. Read only; empty when nothing is running. */
+export interface AgentRunsResult {
+  runs: AgentRun[];
+}
+
+export type AgentRunsResponse = ApiResponse<AgentRunsResult>;
+
+/** How often the client asks for the runs in flight, and only while something is in flight. */
+export const AGENT_RUNS_POLL_MS = 700 as const;

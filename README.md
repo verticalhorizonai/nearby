@@ -22,7 +22,9 @@ post offers in a simple dashboard and watch sales arrive.
 - **The agent.** Claude, through the Anthropic Messages API with tool use, run on the server. It has four tools:
   `list_upcoming_appointments`, `find_places_near`, `find_offer_candidates` and `propose_offer`. It chooses at most two
   of the matched offers and writes a one-sentence reason for each. Its output is checked in code before anything is
-  shown: only matched offers, at most two, at most 25 words. Distances shown are always the code's.
+  shown: only matched offers, at most two, at most 25 words. Distances shown are always the code's. While it runs, My
+  week and the stop's page show its tool calls live, as they happen ("Reading your week", "Looking up places",
+  "Checking 3 offers", "Choosing"), then what it came to ("2 picks", "1 pick", "Nothing fits").
 - **One yes.** Claude has no payment tool. Tapping Yes mints a single-use confirmation token (256 random bits, stored
   only as a hash, valid for 10 minutes, bound to that pick and that browser). Only the purchase route can create a
   PayPal order, and only with that token. The amount is the offer's price read from the database, never from the
@@ -36,6 +38,45 @@ post offers in a simple dashboard and watch sales arrive.
   plot of the appointment and Nearby's own merchants.
 - **Every outside service is behind one adapter** (PayPal, Anthropic, Google Places), each with recorded fixtures.
   The automated tests use the fixtures only and never call a live service.
+
+## Bring your own agent
+
+Nearby's offers are open to any AI assistant that speaks MCP, and the purchase is still one person's yes. The app
+serves a small read-only MCP server at `/mcp` on its own address (for a local run, `http://localhost:3000/mcp`):
+Streamable HTTP, stateless, no sign-in.
+
+Add it to an MCP client as a Streamable HTTP (or "HTTP") server with that URL. For example, in Claude Code:
+
+```bash
+claude mcp add --transport http nearby https://your-nearby-address/mcp
+```
+
+or, in a client that reads a JSON configuration:
+
+```json
+{ "mcpServers": { "nearby": { "type": "http", "url": "https://your-nearby-address/mcp" } } }
+```
+
+It has two tools. Neither can buy anything.
+
+- **`find_offers_near`** takes `lat`, `lng`, `starts_at` (ISO 8601 with an offset, for example
+  `2026-11-17T09:30:00-07:00`) and an optional `radius_miles` (at most 3). It runs the app's own matching for a stop
+  at that place and time (treated as a one-hour appointment) and returns at most two offers, best first, each with
+  `offer_id`, `merchant`, `sample`, `title`, `price` and `price_cents`, `deposit`, `distance` (as the app's card
+  writes it, for example `0.2 mi`), `valid_window`, `time_fit`, `score` and `checkout_url`. Outside the demo area
+  around Tucson, or for a start that is not within the next 7 days, the list is empty and `note` says why.
+- **`get_offer`** takes an `offer_id` and returns the same fields without the distance. Given `lat`, `lng` and
+  `starts_at` as well, it also returns that stop's `time_fit`, `score` and `checkout_url`; without them those are
+  `null`.
+
+The tools call no model and no outside service, write nothing, and are rate limited per client address (60 requests
+a minute). To buy, a person opens `checkout_url` in a browser. That page changes nothing: it shows the offer with its
+Sample badge, the price from Nearby's database, the place and the time, and one button, **Review in Nearby**. The
+button checks again that the offer still fits, adds the stop to that browser's week ("Added by your assistant") with
+the offer as a pick ("Suggested by your assistant"), and opens the stop. From there it is the usual flow: Yes, the
+confirmation sheet, approval on PayPal's sandbox page, the receipt. The pick's sentence is Nearby's own template; a
+`title` added to the link is shown as plain text (at most 80 characters) and is never given to the model. Reset demo
+removes these stops with their picks.
 
 Stack: TypeScript and Node with Fastify, React built with Vite, Tailwind CSS with shadcn/ui components, PostgreSQL,
 Vitest.

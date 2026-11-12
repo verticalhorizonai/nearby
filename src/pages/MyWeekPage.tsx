@@ -2,7 +2,7 @@
 // day in America/Phoenix, each with an on/off switch (optimistic, reverted on failure) and a link to its picks;
 // skipped events folded at the bottom with a short reason. The map sits above the list on a phone and on the right
 // from 900 px (spec 3.11.2 Layout). Not connected (404) sends the shopper to Connect.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -14,7 +14,9 @@ import { WeekMap } from '@/components/map/WeekMap';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/components/ui/cn';
 import { api, useApiQuery } from '@/hooks/useApi';
-import { prefetchPicks, usePicksPrefetch } from '@/hooks/usePicksPrefetch';
+import { usePicksPrefetch } from '@/hooks/usePicksPrefetch';
+import { useAgentRuns } from '@/hooks/useAgentRuns';
+import { LiveStep, SettledChip, settledLabel } from '@/components/picks/AgentStatus';
 import { SKIP_REASON_TEXT, dayKey, formatDayHeading, formatEventWhen, formatTimeRange } from '@/client/format';
 
 function groupByDay(appointments: UpcomingAppointment[]): { key: string; heading: string; items: UpcomingAppointment[] }[] {
@@ -35,10 +37,30 @@ export function MyWeekPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [saving, setSaving] = useState<Set<string>>(new Set());
   // Picks for every appointment that is on, fetched in the background while the shopper reads the week.
-  usePicksPrefetch(week.data?.appointments);
+  const prefetched = usePicksPrefetch(week.data?.appointments);
+  // Signs of life (build ruling 43): each run's current step while it is in flight, polled only while one is.
+  const runs = useAgentRuns(prefetched.pending);
+  // A run seen in flight is announced once, politely, when it settles ("Workshop: 2 picks.").
+  const seenLive = useRef<Set<string>>(new Set());
+  const announced = useRef<Set<string>>(new Set());
+  const [announce, setAnnounce] = useState('');
+  useEffect(() => {
+    for (const id of Object.keys(runs)) seenLive.current.add(id);
+    const lines: string[] = [];
+    for (const a of week.data?.appointments ?? []) {
+      if (!seenLive.current.has(a.id) || runs[a.id] || announced.current.has(a.id)) continue;
+      const settled = settledLabel(prefetched.results[a.id]);
+      if (!settled) continue;
+      announced.current.add(a.id);
+      lines.push(`${a.title}: ${settled}.`);
+    }
+    if (lines.length > 0) setAnnounce(lines.join(' '));
+  }, [runs, prefetched.results, week.data]);
 
-  // REQ-01-01: no calendar connected for this session -> Connect.
-  const notConnected = connection.error?.status === 404 || week.error?.status === 404;
+  // REQ-01-01: no calendar connected for this session -> Connect. A session holding only stops an assistant handed over
+  // (build ruling 42) lists them and offers Connect instead.
+  const notConnected = week.error?.status === 404;
+  const calendarMissing = connection.error?.status === 404 && !!week.data;
   useEffect(() => {
     if (notConnected) navigate('/connect', { replace: true });
   }, [notConnected, navigate]);
@@ -53,7 +75,7 @@ export function MyWeekPage() {
     try {
       const saved = await api.patch<Appointment>(`/api/appointments/${encodeURIComponent(a.id)}`, { enabled: next });
       setEnabled(a.id, saved.enabled);
-      if (saved.enabled) prefetchPicks(a.id); // turned back on: get its picks ready too
+      if (saved.enabled) prefetched.prefetch(a.id); // turned back on: get its picks ready too
     } catch {
       setEnabled(a.id, !next);
       toast.error(`Could not save that change. ${a.title} is back as it was.`);
@@ -123,6 +145,7 @@ export function MyWeekPage() {
                           <span className="block text-[13px] font-semibold text-secondary-text">{formatTimeRange(a.startsAt, a.endsAt)}</span>
                           <span className="flex min-w-0 items-center gap-2">
                             <span className="min-w-0 truncate text-[17px] font-bold leading-snug">{a.title}</span>
+                            {a.enabled && !runs[a.id] && <SettledChip result={prefetched.results[a.id]} />}
                             {a.boughtCount > 0 && (
                               // Picks bought for this stop (build ruling 36): the seat chip's pill style; one line, so the
                               // card keeps its height; the visible text is short, the spoken one says what it means.
@@ -134,7 +157,18 @@ export function MyWeekPage() {
                               </span>
                             )}
                           </span>
-                          <span className="block truncate text-sm text-secondary-text">{a.address}</span>
+                          {a.enabled && runs[a.id] ? (
+                            // While the run is in flight its current step takes the address line, the card's widest
+                            // (build ruling 43); the address is back when the run settles.
+                            <LiveStep run={runs[a.id]} />
+                          ) : (
+                            <span className="block truncate text-sm text-secondary-text">{a.address}</span>
+                          )}
+                          {a.addedBy === 'assistant' && (
+                            <span className="block text-[13px] font-semibold text-primary" data-testid="added-by-assistant">
+                              Added by your assistant
+                            </span>
+                          )}
                           {!a.enabled && <span className="block text-[13px] text-secondary-text">Off. Nearby skips this one.</span>}
                         </span>
                         <ChevronRight className="h-5 w-5 flex-none text-secondary-text" aria-hidden="true" />
@@ -187,6 +221,17 @@ export function MyWeekPage() {
             ? `${connection.data.calendarName}: the next 7 days. Choose a stop to see its picks.`
             : 'The next 7 days. Choose a stop to see its picks.'}
         </p>
+        <p className="sr-only" role="status" aria-live="polite" data-testid="week-announce">
+          {announce}
+        </p>
+        {calendarMissing && (
+          <p className="text-sm text-secondary-text" data-testid="calendar-missing">
+            No calendar is connected yet.{' '}
+            <Link to="/connect" className="font-semibold">
+              Connect the demo calendar
+            </Link>
+          </p>
+        )}
       </div>
       {content}
     </PageShell>

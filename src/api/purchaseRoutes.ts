@@ -9,6 +9,9 @@ export function registerPurchaseRoutes(app: FastifyInstance, s: AppServices): vo
     s.rateLimiter.count(req.sessionId); // every request to the agent endpoint counts (3.6.4)
     return ok(reply, await s.picks.picks(req.sessionId, id));
   });
+  // Signs of life (build ruling 43): this session's agent runs in flight, each with its tool calls so far. Read only;
+  // it never starts a run and never counts toward the rate limit.
+  app.get('/api/agent/runs', async (req, reply) => ok(reply, { runs: s.activity.list(req.sessionId) }));
   app.get<{ Params: { appointmentId: string } }>('/api/appointments/:appointmentId/map', async (req, reply) =>
     ok(reply, await s.map.mapData(req.sessionId, requireUuid(req.params.appointmentId, 'appointmentId'))),
   );

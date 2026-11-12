@@ -2,7 +2,7 @@
 // calendar through the MCP client, filters the events in code (3.2.3), resolves coordinates from the seed (3.3) and
 // stores every event for the session with its skip reason (spec 3.9; build ruling 9).
 import type { Db, DbClient } from '../../models/db.js';
-import type { Appointment, CalendarConnection, SkippedEvent, SkippedEventReason, UpcomingAppointment, UpcomingAppointmentsResult } from '../../shared/types.js';
+import type { Appointment, AppointmentAddedBy, CalendarConnection, SkippedEvent, SkippedEventReason, UpcomingAppointment, UpcomingAppointmentsResult } from '../../shared/types.js';
 import { APPOINTMENT_WINDOW_DAYS } from '../../shared/types.js';
 import type { CalendarSource } from '../calendarMcp/client.js';
 import { DEMO_APPOINTMENT_COORDINATES } from '../../seed/sampleData.js';
@@ -23,6 +23,7 @@ export interface AppointmentRow {
   enabled: boolean;
   created_at: Date;
   updated_at: Date;
+  added_by: AppointmentAddedBy;
 }
 
 export function toAppointment(r: AppointmentRow): Appointment {
@@ -34,6 +35,7 @@ export function toAppointment(r: AppointmentRow): Appointment {
     address: r.location_text ?? '',
     location: { lat: r.location_lat ?? 0, lng: r.location_lng ?? 0 },
     enabled: r.enabled,
+    addedBy: r.added_by,
     createdAt: r.created_at.toISOString(),
     updatedAt: r.updated_at.toISOString(),
   };
@@ -74,9 +76,10 @@ export class AppointmentsService {
     return rows;
   }
 
+  /** When the session connected the demo calendar. A stop an assistant handed over is not a connection (ruling 42). */
   private async isConnected(sessionId: string): Promise<Date | null> {
     const { rows } = await this.db.query<{ connected_at: Date | null }>(
-      'SELECT min(created_at) AS connected_at FROM appointments WHERE session_id = $1',
+      "SELECT min(created_at) AS connected_at FROM appointments WHERE session_id = $1 AND added_by = 'calendar'",
       [sessionId],
     );
     return rows[0]?.connected_at ?? null;
@@ -101,10 +104,17 @@ export class AppointmentsService {
     return this.connection(sessionId, connectedAt);
   }
 
-  /** GET /api/appointments/upcoming: refreshes from the calendar (dates roll forward), then lists. */
+  /**
+   * GET /api/appointments/upcoming: refreshes from the calendar (dates roll forward), then lists. The stops an assistant
+   * handed over are listed with the calendar's (ruling 42); a session with neither is not connected (404).
+   */
   async upcoming(sessionId: string): Promise<UpcomingAppointmentsResult> {
-    if (!(await this.isConnected(sessionId))) throw notFound('No calendar is connected for this session.');
-    await this.syncFromCalendar(sessionId);
+    if (await this.isConnected(sessionId)) {
+      await this.syncFromCalendar(sessionId);
+    } else {
+      const { rows } = await this.db.query("SELECT 1 FROM appointments WHERE session_id = $1 AND added_by = 'assistant' LIMIT 1", [sessionId]);
+      if (rows.length === 0) throw notFound('No calendar is connected for this session.');
+    }
     const rows = await this.rows(sessionId);
     // Completed purchases per appointment in this session: the "bought" pill of My week (build ruling 36).
     const bought = await this.db.query<{ appointment_id: string; n: number }>(

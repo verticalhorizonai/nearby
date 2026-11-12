@@ -12,10 +12,14 @@ import { ErrorState } from '@/components/feedback/ErrorState';
 import { Button } from '@/components/ui/button';
 import { ConfirmPurchase } from './ConfirmPurchase';
 import { PickCard, PickCardSkeleton } from './PickCard';
+import { RunSteps } from './AgentStatus';
+import { useAgentRuns } from '@/hooks/useAgentRuns';
 
 /** The label above the cards (spec 3.11.2; ruling 25, RATIFIED, amending ruling 20). */
 export const CHOSEN_BY_AGENT_LABEL = 'Chosen by the agent';
 export const MATCHED_BY_FALLBACK_LABEL = 'Matched by distance and time';
+/** A pick handed over through an outside assistant's checkout link (build ruling 42). */
+export const SUGGESTED_BY_ASSISTANT_LABEL = 'Suggested by your assistant';
 /** Shown above the placeholder cards while the picks load. */
 export const AGENT_CHOOSING_LINE = 'The agent is choosing\u2026';
 
@@ -48,6 +52,8 @@ export function PicksPanel({ appointmentId, redirect = (url) => window.location.
   const [announce, setAnnounce] = useState('');
 
   const { data, error, loading, reload, setData } = picksQuery;
+  // Signs of life (build ruling 43): while the picks load, this stop's run, step by step.
+  const run = useAgentRuns(loading && !data)[appointmentId];
   const reducedMotion = useReducedMotion();
 
   const markDeclined = (proposalId: string) =>
@@ -137,10 +143,14 @@ export function PicksPanel({ appointmentId, redirect = (url) => window.location.
   if (loading && !data) {
     body = (
       <div className="flex flex-col gap-3.5" aria-busy="true" aria-label="Finding picks for this stop">
-        {/* One plain line while the agent runs (spec owner's follow-up; ruling 32). */}
-        <p className="text-[15px] text-secondary-text" role="status" data-testid="picks-loading-line">
-          {AGENT_CHOOSING_LINE}
-        </p>
+        {/* The run's live steps (build ruling 43); one plain line until the first step (ruling 32). */}
+        {run && (run.mode === 'fallback' || run.steps.length > 0) ? (
+          <RunSteps run={run} />
+        ) : (
+          <p className="text-[15px] text-secondary-text" role="status" data-testid="picks-loading-line">
+            {AGENT_CHOOSING_LINE}
+          </p>
+        )}
         <PickCardSkeleton />
         <PickCardSkeleton />
       </div>
@@ -186,7 +196,11 @@ export function PicksPanel({ appointmentId, redirect = (url) => window.location.
         {visible.length > 0 && (
           // True to the path (ruling 25, RATIFIED): the agent's picks, or the fallback's top two by score.
           <span className="text-[13px] text-secondary-text" data-testid="picks-source-label">
-            {visible.every((p) => p.source === 'agent') ? CHOSEN_BY_AGENT_LABEL : MATCHED_BY_FALLBACK_LABEL}
+            {visible.every((p) => p.source === 'agent')
+              ? CHOSEN_BY_AGENT_LABEL
+              : visible.every((p) => p.source === 'assistant')
+                ? SUGGESTED_BY_ASSISTANT_LABEL
+                : MATCHED_BY_FALLBACK_LABEL}
           </span>
         )}
       </div>

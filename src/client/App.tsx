@@ -6,6 +6,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { AppointmentDetailPage } from '@/pages/AppointmentDetailPage';
 import { ChooseSeatPage } from '@/pages/ChooseSeatPage';
 import { ConnectPage } from '@/pages/ConnectPage';
+import { HandoffPage } from '@/pages/HandoffPage';
 import { HomePage } from '@/pages/HomePage';
 import { MerchantDashboardPage } from '@/pages/MerchantDashboardPage';
 import { MerchantListPage } from '@/pages/MerchantListPage';
@@ -23,6 +24,7 @@ export function AppRoutes() {
         <Route path="/connect" element={<ConnectPage />} />
         <Route path="/week" element={<MyWeekPage />} />
         <Route path="/appointments/:appointmentId" element={<AppointmentDetailPage />} />
+        <Route path="/handoff" element={<HandoffPage />} />
         <Route path="/pay/return" element={<PaymentResultPage kind="return" />} />
         <Route path="/pay/cancel" element={<PaymentResultPage kind="cancel" />} />
         <Route path="/merchant" element={<MerchantListPage />} />

@@ -9,7 +9,8 @@ import { createHash } from 'node:crypto';
 import type { Db } from '../../models/db.js';
 import { withTransaction } from '../../models/db.js';
 import type { HandoffParams, HandoffPreview, HandoffResult } from '../../shared/types.js';
-import { HANDOFF_DEFAULT_TITLE, HANDOFF_TITLE_MAX_LENGTH, HANDOFFS_PER_SESSION_PER_HOUR } from '../../shared/types.js';
+import { HANDOFF_DEFAULT_TITLE, HANDOFFS_PER_SESSION_PER_HOUR } from '../../shared/types.js';
+import { cleanPlaceName, cleanStopTitle, coordinatesText } from './linkText.js';
 import { ApiError, badRequest, notFound } from '../../api/http.js';
 import { applyLazyTransitions } from '../proposals/lifecycle.js';
 import { fallbackReason } from '../agent/fallback.js';
@@ -32,15 +33,15 @@ export const TIME_PASSED_NOTE = 'That time has passed, or it is more than 7 days
 
 /** A title from a link: text only (control and format characters removed, spaces collapsed), at most 80 characters. */
 export function cleanTitle(raw: unknown): string {
-  if (typeof raw !== 'string') return HANDOFF_DEFAULT_TITLE;
-  const text = raw.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ').replace(/\s+/g, ' ').trim();
-  const cut = Array.from(text).slice(0, HANDOFF_TITLE_MAX_LENGTH).join('').trim();
-  return cut === '' ? HANDOFF_DEFAULT_TITLE : cut;
+  return cleanStopTitle(raw) ?? HANDOFF_DEFAULT_TITLE;
 }
 
-/** The stop's address line: the place the assistant gave, as coordinates (there is no address in the link). */
-export function stopAddress(stop: StopQuery): string {
-  return `Near ${stop.location.lat.toFixed(4)}, ${stop.location.lng.toFixed(4)}`;
+/**
+ * The stop's address line: the place name the assistant gave (text only, at most 80 characters; build ruling 47), else
+ * the place as coordinates.
+ */
+export function stopAddress(stop: StopQuery, place: unknown = undefined): string {
+  return cleanPlaceName(place) ?? coordinatesText(stop.location.lat, stop.location.lng);
 }
 
 /** One stop per link in a session: the offer, the place and the start time (the title is not part of it). */
@@ -53,6 +54,7 @@ interface Parsed {
   facts: OfferFacts;
   stop: StopQuery;
   title: string;
+  address: string;
 }
 
 export class HandoffService {
@@ -69,12 +71,12 @@ export class HandoffService {
     if ('error' in parsed) throw badRequest(parsed.error.replace('starts_at', 'at'));
     const facts = await loadOfferFacts(this.db, p.offer, sessionId);
     if (!facts) throw notFound('No offer exists with this id.');
-    return { facts, stop: parsed.stop, title: cleanTitle(p.title) };
+    return { facts, stop: parsed.stop, title: cleanTitle(p.title), address: stopAddress(parsed.stop, p.place) };
   }
 
   /** GET /api/handoff: what the page shows. Reads only; writes nothing. */
   async preview(sessionId: string, p: Partial<HandoffParams>): Promise<HandoffPreview> {
-    const { facts, stop, title } = await this.parse(sessionId, p);
+    const { facts, stop, title, address } = await this.parse(sessionId, p);
     let note: string | null = null;
     if (!inDemoArea(stop.location)) note = OUT_OF_AREA_NOTE;
     else if (!inWindow(stop.startsAt, this.now())) note = TIME_PASSED_NOTE;
@@ -88,7 +90,7 @@ export class HandoffService {
       isDeposit: facts.is_deposit,
       validWindow: { validDays: facts.valid_days, validStartTime: facts.valid_start_time, validEndTime: facts.valid_end_time },
       title,
-      address: stopAddress(stop),
+      address,
       location: stop.location,
       startsAt: stop.startsAt.toISOString(),
       endsAt: stop.endsAt.toISOString(),
@@ -102,7 +104,7 @@ export class HandoffService {
     if (!this.limiter.take(sessionId)) {
       throw new ApiError(429, 'rate_limited', `At most ${HANDOFFS_PER_SESSION_PER_HOUR} handoffs an hour from one browser. Try again later.`);
     }
-    const { facts, stop, title } = await this.parse(sessionId, p);
+    const { facts, stop, title, address } = await this.parse(sessionId, p);
     if (!inDemoArea(stop.location)) throw badRequest(OUT_OF_AREA_NOTE);
     const eventId = handoffEventId(facts.id, stop);
     const now = this.now();
@@ -143,7 +145,7 @@ export class HandoffService {
           await tx.query<{ id: string }>(
             `INSERT INTO appointments (session_id, source_event_id, title, starts_at, ends_at, location_text, location_lat, location_lng, added_by)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'assistant') RETURNING id`,
-            [sessionId, eventId, title, stop.startsAt, stop.endsAt, stopAddress(stop), stop.location.lat, stop.location.lng],
+            [sessionId, eventId, title, stop.startsAt, stop.endsAt, address, stop.location.lat, stop.location.lng],
           )
         ).rows[0].id;
       const proposal = await tx.query<{ id: string }>(

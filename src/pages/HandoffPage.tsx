@@ -16,11 +16,11 @@ import { api, isApiError, useApiQuery } from '@/hooks/useApi';
 import { SHOPPER_SEAT, writeSeat } from '@/hooks/useSeat';
 import { formatCents, formatDayTimeRange, formatValidWindow } from '@/client/format';
 
-/** The link's own query, passed on as it came: the offer, the place, the start and an optional title. */
+/** The link's own query, passed on as it came: the offer, the place, the start, and an optional title and place name. */
 function linkParams(search: string): Partial<HandoffParams> {
   const q = new URLSearchParams(search);
   const out: Partial<HandoffParams> = {};
-  for (const key of ['offer', 'lat', 'lng', 'at', 'title'] as const) {
+  for (const key of ['offer', 'lat', 'lng', 'at', 'title', 'place'] as const) {
     const v = q.get(key);
     if (v !== null) out[key] = v;
   }

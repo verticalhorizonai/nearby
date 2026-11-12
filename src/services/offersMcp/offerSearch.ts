@@ -9,6 +9,7 @@ import { haversineMeters, METERS_PER_MILE } from '../matching/geo.js';
 import { DOWNTOWN_TUCSON, MAX_DISTANCE_FROM_DOWNTOWN_M } from '../calendar/eventFilter.js';
 import { loadMatchOffers, visibleOffersSql } from '../picks/picksService.js';
 import { formatMiles, formatValidWindow } from '../agent/fallback.js';
+import { cleanPlaceName, cleanStopTitle } from '../handoff/linkText.js';
 
 /** ISO 8601 date and time with an offset (Z or ±HH:MM), as the tools require. */
 const ISO_WITH_OFFSET = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/;
@@ -53,9 +54,24 @@ export function inWindow(startsAt: Date, now: Date): boolean {
   return startsAt.getTime() > now.getTime() && startsAt.getTime() <= now.getTime() + APPOINTMENT_WINDOW_DAYS * 86_400_000;
 }
 
-/** The checkout link for an offer at a place and time: an app page a person opens; opening it changes nothing. */
-export function checkoutUrl(appBaseUrl: string, offerId: string, stop: StopQuery, at: string): string {
+/** The stop's own words an assistant may give (build ruling 47), cleaned to text and cut to their limits. */
+export interface StopNames {
+  title: string | null;
+  place: string | null;
+}
+
+export function stopNames(input: { title?: unknown; place?: unknown }): StopNames {
+  return { title: cleanStopTitle(input.title), place: cleanPlaceName(input.place) };
+}
+
+/**
+ * The checkout link for an offer at a place and time: an app page a person opens; opening it changes nothing. It
+ * carries the stop's title and place name when the assistant gave them (build ruling 47).
+ */
+export function checkoutUrl(appBaseUrl: string, offerId: string, stop: StopQuery, at: string, names: StopNames = { title: null, place: null }): string {
   const q = new URLSearchParams({ offer: offerId, lat: String(stop.location.lat), lng: String(stop.location.lng), at });
+  if (names.title) q.set('title', names.title);
+  if (names.place) q.set('place', names.place);
   return `${appBaseUrl.replace(/\/$/, '')}/handoff?${q.toString()}`;
 }
 
@@ -129,7 +145,7 @@ export class OfferSearch {
   ) {}
 
   /** find_offers_near: the offers Nearby would show for a stop at this place and time, best first. */
-  async findNear(input: { lat: unknown; lng: unknown; starts_at: unknown; radius_miles?: unknown }) {
+  async findNear(input: { lat: unknown; lng: unknown; starts_at: unknown; radius_miles?: unknown; title?: unknown; place?: unknown }) {
     const parsed = parseStop(input.lat, input.lng, input.starts_at);
     if ('error' in parsed) return { error: parsed.error };
     const { stop } = parsed;
@@ -154,7 +170,7 @@ export class OfferSearch {
         valid_window,
         time_fit: c.timeFit,
         score: roundScore(c.score),
-        checkout_url: checkoutUrl(this.appBaseUrl, c.offer.id, stop, String(input.starts_at)),
+        checkout_url: checkoutUrl(this.appBaseUrl, c.offer.id, stop, String(input.starts_at), stopNames(input)),
       });
     }
     return { offers, note: offers.length === 0 ? NOTHING_FITS_NOTE : null };
@@ -164,7 +180,7 @@ export class OfferSearch {
    * get_offer: one offer's facts. With lat, lng and starts_at it also gives the time fit, the score and the checkout
    * link for that stop (still no distance); without them those three are null (ruling 42).
    */
-  async getOffer(input: { offer_id: unknown; lat?: unknown; lng?: unknown; starts_at?: unknown }) {
+  async getOffer(input: { offer_id: unknown; lat?: unknown; lng?: unknown; starts_at?: unknown; title?: unknown; place?: unknown }) {
     const facts = typeof input.offer_id === 'string' ? await loadOfferFacts(this.db, input.offer_id, null) : null;
     if (!facts) return { error: 'No offer exists with this offer_id.' };
     const base = offerFields(facts);
@@ -180,7 +196,7 @@ export class OfferSearch {
     const c = showable((await matchStop(this.db, stop, null)).candidates, facts.id);
     if (!c) return { offer: none, note: 'This offer does not fit that place and time.' };
     return {
-      offer: { ...base, time_fit: c.timeFit, score: roundScore(c.score), checkout_url: checkoutUrl(this.appBaseUrl, facts.id, stop, String(input.starts_at)) },
+      offer: { ...base, time_fit: c.timeFit, score: roundScore(c.score), checkout_url: checkoutUrl(this.appBaseUrl, facts.id, stop, String(input.starts_at), stopNames(input)) },
       note: null,
     };
   }

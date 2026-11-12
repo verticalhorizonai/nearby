@@ -154,3 +154,57 @@ describe('the home page', () => {
     expect(section).toHaveTextContent('Neither tool can buy.');
   });
 });
+
+describe('a stop named by the assistant (build ruling 47)', () => {
+  const PLACE = '<b>Fourth Avenue</b>, Tucson';
+
+  it('the handoff page shows the place name as text and passes it on', async () => {
+    let body: Record<string, string> = {};
+    stubFetch({
+      'GET /api/handoff': ok(preview({ title: 'Lunch with Sam', address: PLACE })),
+      'POST /api/handoff': (init) => {
+        body = JSON.parse(String(init?.body));
+        return { status: 201, body: { success: true, data: { appointmentId: STOP, proposalId: 'p1', created: true } } };
+      },
+      [`GET /api/appointments/${STOP}/picks`]: ok({ appointmentId: STOP, picks: [], noMatch: false }),
+    });
+    renderAt(`${LINK}&place=${encodeURIComponent(PLACE)}`);
+    expect(await screen.findByText(PLACE)).toBeInTheDocument();
+    expect(screen.getByTestId('handoff-title')).toHaveTextContent('Lunch with Sam');
+    expect(document.querySelector('b')).toBeNull();
+    fireEvent.click(screen.getByTestId('review-in-nearby'));
+    await waitFor(() => expect(body.place).toBe(PLACE));
+  });
+
+  it('the stop page shows the given title and place as text', async () => {
+    const appointment = {
+      id: STOP, title: 'Lunch with Sam', startsAt: '2026-11-17T19:30:00.000Z', endsAt: '2026-11-17T20:30:00.000Z', address: PLACE,
+      location: { lat: 32.2255, lng: -110.964 }, enabled: true, addedBy: 'assistant', createdAt: 'x', updatedAt: 'x',
+    };
+    stubFetch({
+      [`GET /api/appointments/${STOP}/map`]: ok({ appointment, searchRadiusMeters: 1609, renderMode: 'svg_plot', places: [], placesAttributions: [], merchants: [] }),
+      [`GET /api/appointments/${STOP}/picks`]: ok({ appointmentId: STOP, picks: [], noMatch: true }),
+    });
+    renderAt(`/appointments/${STOP}`);
+    expect(await screen.findByRole('heading', { level: 1, name: 'Lunch with Sam' })).toBeInTheDocument();
+    expect(screen.getByText(PLACE)).toBeInTheDocument();
+    expect(document.querySelector('b')).toBeNull();
+  });
+
+  it('My week shows the given title and place as text', async () => {
+    const week: UpcomingAppointmentsResult = {
+      appointments: [{
+        id: STOP, title: 'Lunch with Sam', startsAt: '2026-11-17T19:30:00.000Z', endsAt: '2026-11-17T20:30:00.000Z', address: PLACE,
+        location: { lat: 32.2255, lng: -110.964 }, enabled: true, addedBy: 'assistant', createdAt: 'x', updatedAt: 'x', boughtCount: 0,
+      }],
+      skippedEvents: [],
+    };
+    stubFetch({ 'GET /api/appointments/upcoming': ok(week), [`GET /api/appointments/${STOP}/picks`]: ok({ appointmentId: STOP, picks: [], noMatch: true }) });
+    renderAt('/week');
+    const row = await screen.findByTestId('appointment-row');
+    expect(row).toHaveTextContent('Lunch with Sam');
+    expect(row).toHaveTextContent(PLACE);
+    expect(row).toHaveTextContent('Added by your assistant');
+    expect(document.querySelector('b')).toBeNull();
+  });
+});

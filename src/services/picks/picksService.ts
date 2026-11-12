@@ -10,6 +10,7 @@ import { loadAppointmentProposals, toPick } from '../proposals/proposalRows.js';
 import { matchOffers, type MatchOffer, type MatchResult } from '../matching/matcher.js';
 import type { ChooseResult, PickChooser } from '../agent/chooser.js';
 import type { AgentActivity, RunReporter } from '../agent/agentActivity.js';
+import { coordinatesText } from '../handoff/linkText.js';
 
 /** What the model is told a handed-over stop is called, in place of the link's title (build ruling 42). */
 export const ASSISTANT_STOP_TITLE_FOR_MODEL = 'A stop the person\'s assistant added';
@@ -135,7 +136,8 @@ export class PicksService {
         title: appt.added_by === 'assistant' ? ASSISTANT_STOP_TITLE_FOR_MODEL : appt.title,
         startsAt: appt.starts_at,
         endsAt: appt.ends_at,
-        locationText: appt.location_text ?? '',
+        // ...and its place name likewise: the model is told the coordinates only (build ruling 47).
+        locationText: appt.added_by === 'assistant' ? coordinatesText(appt.location_lat!, appt.location_lng!) : (appt.location_text ?? ''),
         lat: appt.location_lat!,
         lng: appt.location_lng!,
       },

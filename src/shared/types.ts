@@ -838,6 +838,10 @@ export const ASSISTANT_STOP_MINUTES = 60 as const;
 export const MCP_MAX_RADIUS_MILES = 3 as const;
 /** A title in a checkout link is data: text only, at most this many characters. */
 export const HANDOFF_TITLE_MAX_LENGTH = 80 as const;
+/** A place name in a checkout link is data: text only, at most this many characters (build ruling 47). */
+export const HANDOFF_PLACE_MAX_LENGTH = 80 as const;
+/** The longest title or place the MCP tools accept before it is cut to its limit (bounds the request). */
+export const MCP_TEXT_INPUT_MAX_LENGTH = 500 as const;
 /** The stop's title when the link carries none. */
 export const HANDOFF_DEFAULT_TITLE = 'Stop from your assistant' as const;
 
@@ -851,7 +855,10 @@ export interface HandoffParams {
   lng: string;
   /** ISO 8601 with an offset, e.g. 2026-11-17T09:30:00-07:00. */
   at: string;
+  /** What the stop is, e.g. "Lunch with Sam". Text only; the default title when missing. */
   title?: string;
+  /** A short name for the place, e.g. "Fourth Avenue, Tucson" (build ruling 47). Text only; "Near <coordinates>" when missing. */
+  place?: string;
 }
 
 /** GET /api/handoff: what the handoff page shows. Read-only: nothing is written. */
@@ -866,6 +873,7 @@ export interface HandoffPreview {
   validWindow: ValidWindow;
   /** The stop's title as it will be stored: text only, at most HANDOFF_TITLE_MAX_LENGTH characters. */
   title: string;
+  /** The place name from the link (text only, at most HANDOFF_PLACE_MAX_LENGTH characters), else "Near <coordinates>". */
   address: string;
   location: GeoPoint;
   startsAt: string;

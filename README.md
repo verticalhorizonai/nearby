@@ -73,15 +73,19 @@ It has two tools. Neither can buy anything.
 - **`get_offer`** takes an `offer_id` and returns the same fields without the distance. Given `lat`, `lng` and
   `starts_at` as well, it also returns that stop's `time_fit`, `score` and `checkout_url`; without them those are
   `null`.
+- Both tools also take two optional strings, `title` (what the stop is, for example "Lunch with Sam") and `place` (a
+  short name for the location, for example "Fourth Avenue, Tucson"). They are trimmed, cut to 80 characters and
+  carried in `checkout_url`, so the person sees the stop by its name. They never change which offers match.
 
 The tools call no model and no outside service, write nothing, and are rate limited per client address (60 requests
 a minute). To buy, a person opens `checkout_url` in a browser. That page changes nothing: it shows the offer with its
 Sample badge, the price from Nearby's database, the place and the time, and one button, **Review in Nearby**. The
 button checks again that the offer still fits, adds the stop to that browser's week ("Added by your assistant") with
 the offer as a pick ("Suggested by your assistant"), and opens the stop. From there it is the usual flow: Yes, the
-confirmation sheet, approval on PayPal's sandbox page, the receipt. The pick's sentence is Nearby's own template; a
-`title` added to the link is shown as plain text (at most 80 characters) and is never given to the model. Reset demo
-removes these stops with their picks.
+confirmation sheet, approval on PayPal's sandbox page, the receipt. The pick's sentence is Nearby's own template. The
+`title` and `place` in the link are shown as plain text (at most 80 characters each), in place of "Stop from your
+assistant" and "Near <coordinates>", and are never given to the model. Reset demo removes these stops with their
+picks.
 
 Stack: TypeScript and Node with Fastify, React built with Vite, Tailwind CSS with shadcn/ui components, PostgreSQL,
 Vitest.

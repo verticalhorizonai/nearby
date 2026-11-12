@@ -16,7 +16,7 @@ const MINE = '9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d';
 const offer = (id: string, title: string, over: Partial<MerchantOffer> = {}): MerchantOffer => ({
   id, merchantId: MID, title, priceCents: 600, regularPriceCents: null, category: 'coffee', isDeposit: false,
   validDays: ['mon', 'tue', 'wed', 'thu', 'fri'], validStartTime: '07:00', validEndTime: '11:00',
-  createdAt: '2026-11-11T00:00:00.000Z', updatedAt: '2026-11-11T00:00:00.000Z', postedByYou: false, ...over,
+  createdAt: '2026-11-11T00:00:00.000Z', updatedAt: '2026-11-11T00:00:00.000Z', postedByYou: false, replacesOfferId: null, ...over,
 });
 const dashboard = (): MerchantDashboard => ({
   merchant: {
@@ -88,13 +88,56 @@ describe('the offers list', () => {
     expect(calls.every((c) => c.method === 'GET')).toBe(true);
   });
 
-  it('a sample offer has no Edit or Remove; an offer you posted has both', async () => {
+  it('every row has a visible View button; a sample offer has View and Edit, no Remove; an offer you posted has all three (ruling 45)', async () => {
     serve();
     open();
-    expect(within(await row('Any drink plus pastry')).queryByTestId('offer-owner-actions')).toBeNull();
+    const sample = await row('Any drink plus pastry');
+    expect(within(sample).getAllByRole('button').map((b) => b.textContent)).toEqual(['View', 'Edit']);
+    expect(within(sample).queryByTestId('offer-owner-line')).toBeNull();
     const mine = await row('Poster latte');
-    expect(within(mine).getByRole('button', { name: 'Edit Poster latte' })).toBeInTheDocument();
-    expect(within(mine).getByRole('button', { name: 'Remove Poster latte' })).toBeInTheDocument();
+    expect(within(mine).getAllByRole('button').map((b) => b.textContent)).toEqual(['View', 'Edit', 'Remove']);
+    expect(within(mine).getByTestId('offer-owner-line')).toHaveTextContent(/^Posted by you$/);
+    for (const b of within(mine).getAllByRole('button')) expect(b).toHaveClass('min-h-touch', 'focus-visible:ring-2');
+  });
+
+  it('the View button opens the view on a sample offer and on a posted one; the title opens it too', async () => {
+    serve();
+    open();
+    fireEvent.click(within(await row('Any drink plus pastry')).getByRole('button', { name: 'View Any drink plus pastry' }));
+    expect(within(await screen.findByTestId('offer-view')).getByText('Offer').nextElementSibling).toHaveTextContent('Sample offer');
+    fireEvent.keyDown(screen.getByTestId('offer-view'), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByTestId('offer-view')).toBeNull());
+    fireEvent.click(within(await row('Poster latte')).getByRole('button', { name: 'View Poster latte' }));
+    expect(within(await screen.findByTestId('offer-view')).getByText('Offer').nextElementSibling).toHaveTextContent('Posted by you');
+    fireEvent.keyDown(screen.getByTestId('offer-view'), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByTestId('offer-view')).toBeNull());
+    fireEvent.click(within(await row('Poster latte')).getByTestId('offer-view-open'));
+    expect(await screen.findByTestId('offer-view')).toBeInTheDocument();
+  });
+
+  it('Edit on a sample offer opens the form filled in, says it makes your own version, and the version replaces the sample row with its plain line', async () => {
+    const version = offer('c3d4e5f6-a7b8-4c9d-8e0f-1a2b3c4d5e6f', 'My pastry deal', { postedByYou: true, replacesOfferId: SEED, priceCents: 500, isDeposit: false });
+    const calls = serve((c) =>
+      c.method === 'POST' && c.path === `/api/merchants/${MID}/offers/${SEED}/edit`
+        ? new Response(JSON.stringify({ success: true, data: { offer: version, replacedOfferId: SEED, picksWithdrawn: 0 } }), { status: 201 })
+        : null,
+    );
+    open();
+    fireEvent.click(within(await row('Any drink plus pastry')).getByRole('button', { name: 'Edit Any drink plus pastry' }));
+    const form = await screen.findByTestId('offer-form');
+    expect(within(form).getByLabelText('Title')).toHaveValue('Any drink plus pastry');
+    expect(within(form).getByTestId('offer-edit-note')).toHaveTextContent('Saving makes your own version, which replaces it in your demo only');
+    fireEvent.change(within(form).getByLabelText('Title'), { target: { value: 'My pastry deal' } });
+    fireEvent.change(within(form).getByLabelText('Price in dollars'), { target: { value: '5.00' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Save changes' }));
+    expect(await screen.findByText(/Offer updated: My pastry deal/)).toBeInTheDocument();
+    expect(calls.find((c) => c.method === 'POST')!.path).toBe(`/api/merchants/${MID}/offers/${SEED}/edit`);
+    expect(screen.queryByText('Any drink plus pastry')).toBeNull();
+    const mine = await row('My pastry deal');
+    expect(within(mine).getByTestId('offer-owner-line')).toHaveTextContent('Your version. It replaces the sample offer in your demo only.');
+    fireEvent.click(within(mine).getByRole('button', { name: 'View My pastry deal' }));
+    expect(within(await screen.findByRole('dialog')).getByText('Your version. It replaces the sample offer in your demo only.')).toBeInTheDocument();
+    expect(within(screen.getByTestId('offer-view')).getByText('Offer').nextElementSibling).toHaveTextContent('Your version of a sample offer');
   });
 
   it('Remove asks first, then removes the offer from the list', async () => {

@@ -28,11 +28,15 @@ interface OfferRow {
 
 /**
  * Which offers a session may see (build ruling 44): the seed offers, which are shared, and the offers this session
- * posted; never a removed one. With no session (the public MCP tools), the seed offers only. `n` is the number of the
- * query parameter that holds the session id (or null).
+ * posted; never a removed one. A seed offer this session replaced with its own version is not seen in this session
+ * (build ruling 45). With no session (the public MCP tools), the seed offers only. `n` is the number of the query
+ * parameter that holds the session id (or null).
  */
 export function visibleOffersSql(alias: string, n: number): string {
-  return `${alias}.removed_at IS NULL AND (${alias}.owner_session_id IS NULL OR ${alias}.owner_session_id = $${n})`;
+  return (
+    `${alias}.removed_at IS NULL AND (${alias}.owner_session_id = $${n} OR (${alias}.owner_session_id IS NULL AND NOT EXISTS ` +
+    `(SELECT 1 FROM offers copy WHERE copy.replaces_offer_id = ${alias}.id AND copy.owner_session_id = $${n} AND copy.removed_at IS NULL)))`
+  );
 }
 
 /**

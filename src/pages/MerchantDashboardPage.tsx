@@ -45,7 +45,11 @@ export function MerchantDashboardPage() {
     setEditing(null);
     toast.success(replacedOfferId ? `Offer updated: ${offer.title}. It is live now.` : `Offer published: ${offer.title}. It is live now.`);
   };
-  const onRemoved = (offerId: string) => dash.setData((prev) => (prev ? { ...prev, offers: prev.offers.filter((o) => o.id !== offerId) } : prev));
+  const onRemoved = (offer: MerchantOffer) => {
+    dash.setData((prev) => (prev ? { ...prev, offers: prev.offers.filter((o) => o.id !== offer.id) } : prev));
+    // Your version of a sample offer is gone: the sample offer is back in this demo (build ruling 45).
+    if (offer.replacesOfferId) dash.reload();
+  };
   const onEdit = (offer: MerchantOffer) => {
     setEditing(offer);
     setFormOpen(true);

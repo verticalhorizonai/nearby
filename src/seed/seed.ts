@@ -22,7 +22,7 @@ export async function seedSampleData(db: Db): Promise<{ merchants: number; offer
          ON CONFLICT (id) DO UPDATE SET merchant_id = EXCLUDED.merchant_id, title = EXCLUDED.title, category = EXCLUDED.category,
            price_cents = EXCLUDED.price_cents, regular_price_cents = EXCLUDED.regular_price_cents, valid_days = EXCLUDED.valid_days,
            valid_start_time = EXCLUDED.valid_start_time, valid_end_time = EXCLUDED.valid_end_time, is_deposit = EXCLUDED.is_deposit,
-           owner_session_id = NULL, removed_at = NULL`, // a seed offer is shared and never removed (build ruling 44)
+           owner_session_id = NULL, removed_at = NULL, replaces_offer_id = NULL`, // a seed offer is shared and never removed (rulings 44, 45)
         [o.id, o.merchantId, o.title, o.category, o.priceCents, o.regularPriceCents, o.validDays, o.validStartTime, o.validEndTime, o.isDeposit],
       );
     }

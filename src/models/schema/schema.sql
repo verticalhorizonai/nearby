@@ -173,6 +173,7 @@ CREATE TABLE IF NOT EXISTS offers (
   updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),              -- updatedAt (trigger-maintained)
   owner_session_id     VARCHAR(64) NULL,                                -- the browser session that posted it; NULL = a seed offer, shared (build ruling 44, migration 002)
   removed_at           TIMESTAMPTZ NULL,                                -- set when removed or replaced by an edit; never listed or matched after (build ruling 44, migration 002)
+  replaces_offer_id    UUID        NULL,                                -- the seed offer this session's copy replaces in its demo; NULL when it replaces none (build ruling 45, migration 003)
 
   CONSTRAINT pk_offers PRIMARY KEY (id),
   CONSTRAINT fk_offers_merchant FOREIGN KEY (merchant_id)
@@ -205,7 +206,11 @@ CREATE TABLE IF NOT EXISTS offers (
     CHECK (valid_end_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
 
   -- Zero-padded "HH:MM" values compare correctly as strings.
-  CONSTRAINT chk_offers_window_order CHECK (valid_start_time < valid_end_time)
+  CONSTRAINT chk_offers_window_order CHECK (valid_start_time < valid_end_time),
+
+  -- Build ruling 45: a copy of a seed offer, posted by one session, replaces that seed offer in that session only.
+  CONSTRAINT fk_offers_replaces FOREIGN KEY (replaces_offer_id) REFERENCES offers (id) ON DELETE RESTRICT,
+  CONSTRAINT chk_offers_replaces_owned CHECK (replaces_offer_id IS NULL OR owner_session_id IS NOT NULL)
 );
 
 -- Supports the merchant dashboard offers list and the seat cards.

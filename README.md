@@ -38,8 +38,9 @@ post offers in a simple dashboard and watch sales arrive.
   plot of the appointment and Nearby's own merchants.
 - **Merchants.** Any visitor can open a sample merchant's dashboard and post an offer. A posted offer belongs to the
   browser that posted it: it is shown, matched for picks and sold only there, and only that browser can edit or
-  remove it. The eight sample offers are shared and stay as they are. Removing or editing an offer never changes a
-  past sale or receipt; Reset demo removes the offers that browser posted.
+  remove it. The eight sample offers are shared and never change; editing one makes that browser's own version,
+  which replaces the sample offer in its demo only. Removing or editing an offer never changes a past sale or
+  receipt; removing your version, or Reset demo, brings the sample offer back.
 - **Every outside service is behind one adapter** (PayPal, Anthropic, Google Places), each with recorded fixtures.
   The automated tests use the fixtures only and never call a live service.
 

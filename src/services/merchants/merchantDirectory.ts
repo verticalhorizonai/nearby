@@ -36,10 +36,14 @@ export const toOffer = (r: any): Offer => ({
   category: r.category, validDays: r.valid_days, validStartTime: r.valid_start_time, validEndTime: r.valid_end_time,
   isDeposit: r.is_deposit, createdAt: r.created_at.toISOString(), updatedAt: r.updated_at.toISOString(),
 });
-const toMerchantOffer = (r: any, sessionId: string): MerchantOffer => ({ ...toOffer(r), postedByYou: r.owner_session_id !== null && r.owner_session_id === sessionId });
+const toMerchantOffer = (r: any, sessionId: string): MerchantOffer => ({
+  ...toOffer(r),
+  postedByYou: r.owner_session_id !== null && r.owner_session_id === sessionId,
+  replacesOfferId: r.replaces_offer_id ?? null,
+});
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-export const SEED_OFFER_LOCKED = 'A sample offer stays as it is: only an offer you posted can be edited or removed.';
+export const SEED_OFFER_LOCKED = 'A sample offer cannot be removed. Edit it to make your own version instead.';
 
 /**
  * Withdraws this session's open picks for an offer that is removed (build ruling 44): proposed, accepted and declined
@@ -69,6 +73,24 @@ export class MerchantDirectory {
     if (!this.posts.take(sessionId)) {
       throw new ApiError(429, 'rate_limited', `At most ${OFFER_POSTS_PER_SESSION_PER_HOUR} offers an hour from one browser, edits included. Try again later.`);
     }
+  }
+
+  /**
+   * What an edit applies to (build ruling 45): an offer of this merchant that this session posted and has not removed
+   * (locked), or a sample offer this session still sees (not already replaced by its own version). Else 404.
+   */
+  private async editable(tx: DbClient, sessionId: string, merchantId: string, offerId: string): Promise<{ row: Record<string, unknown>; sample: boolean }> {
+    const { rows } = await tx.query('SELECT * FROM offers WHERE id = $1 AND merchant_id = $2 FOR UPDATE', [offerId, merchantId]);
+    const o = rows[0];
+    if (o && o.removed_at === null && o.owner_session_id === null) {
+      const copy = await tx.query(
+        'SELECT 1 FROM offers WHERE replaces_offer_id = $1 AND owner_session_id = $2 AND removed_at IS NULL',
+        [offerId, sessionId],
+      );
+      if (copy.rows.length === 0) return { row: o, sample: true };
+      throw notFound('No offer of yours exists with this id.'); // replaced in this session: edit your version instead
+    }
+    return { row: await this.ownOffer(tx, sessionId, merchantId, offerId), sample: false };
   }
 
   /** An offer of this merchant that this session posted and has not removed, locked for the change; else 404 or 400. */
@@ -123,11 +145,11 @@ export class MerchantDirectory {
     return { merchant: toMerchant(m), offers: rows.map((r) => toMerchantOffer(r, sessionId)) };
   }
 
-  private async insertOffer(tx: DbClient, merchantId: string, sessionId: string, req: CreateOfferRequest): Promise<MerchantOffer> {
+  private async insertOffer(tx: DbClient, merchantId: string, sessionId: string, req: CreateOfferRequest, replaces: string | null = null): Promise<MerchantOffer> {
     const { rows } = await tx.query(
-      `INSERT INTO offers (merchant_id, title, category, price_cents, regular_price_cents, valid_days, valid_start_time, valid_end_time, is_deposit, created_at, owner_session_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,FALSE,$9,$10) RETURNING *`,
-      [merchantId, req.title, req.category, req.priceCents, req.regularPriceCents ?? null, req.validDays, req.validStartTime, req.validEndTime, this.now(), sessionId],
+      `INSERT INTO offers (merchant_id, title, category, price_cents, regular_price_cents, valid_days, valid_start_time, valid_end_time, is_deposit, created_at, owner_session_id, replaces_offer_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,FALSE,$9,$10,$11) RETURNING *`,
+      [merchantId, req.title, req.category, req.priceCents, req.regularPriceCents ?? null, req.validDays, req.validStartTime, req.validEndTime, this.now(), sessionId, replaces],
     );
     return toMerchantOffer(rows[0], sessionId);
   }
@@ -156,17 +178,23 @@ export class MerchantDirectory {
    * POST /api/merchants/{id}/offers/{offerId}/edit: the old offer is removed exactly as Remove does and a new offer
    * with the edited fields is created, in one transaction. The old row is not changed otherwise, so past purchases,
    * receipts and sales keep its title and amount. Counts toward the posting limit. Input already validated.
+   * On a sample offer (build ruling 45) the sample row is never changed: the new offer is this session's own version,
+   * which replaces the sample offer in this session only, and this session's open picks for the sample offer are
+   * withdrawn. Editing that version again keeps replacing the same sample offer.
    */
   async editOffer(merchantId: string, sessionId: string, offerId: string, req: CreateOfferRequest): Promise<EditOfferResult> {
     await this.merchant(merchantId);
-    // The offer is checked before the limit is counted, so a refused edit (not yours, a sample) costs nothing.
-    await withTransaction(this.db, (tx) => this.ownOffer(tx, sessionId, merchantId, offerId));
+    // The offer is checked before the limit is counted, so a refused edit (not yours, gone) costs nothing.
+    await withTransaction(this.db, (tx) => this.editable(tx, sessionId, merchantId, offerId));
     this.takePost(sessionId);
     return withTransaction(this.db, async (tx) => {
-      await this.ownOffer(tx, sessionId, merchantId, offerId);
-      await tx.query('UPDATE offers SET removed_at = $2 WHERE id = $1', [offerId, this.now()]);
+      // One edit of a sample offer at a time per session, so two quick saves cannot make two versions.
+      await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`offer-edit|${sessionId}|${offerId}`]);
+      const { row, sample } = await this.editable(tx, sessionId, merchantId, offerId);
+      if (!sample) await tx.query('UPDATE offers SET removed_at = $2 WHERE id = $1', [offerId, this.now()]);
       const picksWithdrawn = await withdrawOpenPicks(tx, sessionId, offerId);
-      const offer = await this.insertOffer(tx, merchantId, sessionId, req);
+      const replaces = sample ? offerId : ((row.replaces_offer_id as string | null) ?? null);
+      const offer = await this.insertOffer(tx, merchantId, sessionId, req, replaces);
       return { offer, replacedOfferId: offerId, picksWithdrawn };
     });
   }

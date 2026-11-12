@@ -437,7 +437,15 @@ export interface UpdateOfferRequest {
 export interface MerchantOffer extends Offer {
   /** True for an offer this browser session posted: it can be edited and removed. False for a seed (sample) offer. */
   postedByYou: boolean;
+  /**
+   * For this session's own version of a sample offer (build ruling 45): the sample offer it replaces in this session's
+   * demo only. Null for a sample offer and for a posted offer that replaces none.
+   */
+  replacesOfferId: string | null;
 }
+
+/** The plain line under, and in the view of, an offer that replaces a sample offer (build ruling 45). */
+export const SAMPLE_REPLACEMENT_LINE = 'Your version. It replaces the sample offer in your demo only.' as const;
 
 export type CreateOfferResponse = ApiResponse<MerchantOffer>;
 
@@ -932,7 +940,9 @@ export type RemoveOfferResponse = ApiResponse<RemoveOfferResult>;
 
 /**
  * POST /api/merchants/{merchantId}/offers/{offerId}/edit (body CreateOfferRequest): the old offer is removed exactly
- * as Remove does and a new offer with the edited fields is created, in one transaction.
+ * as Remove does and a new offer with the edited fields is created, in one transaction. On a sample offer (build
+ * ruling 45) the sample row is not changed: the new offer is this session's copy, which replaces the sample offer in
+ * this session only, and this session's open picks for the sample offer are withdrawn.
  */
 export interface EditOfferResult {
   offer: MerchantOffer;

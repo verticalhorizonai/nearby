@@ -99,12 +99,10 @@ describe('posted offers belong to their session', () => {
     expect(seats.find((m: { merchantId: string }) => m.merchantId === SAGUARO)).toMatchObject({ offerTitle: 'Any drink plus pastry', offerPriceCents: 600 });
   });
 
-  it('a seed offer can be neither removed nor edited', async () => {
+  it('a seed offer still cannot be removed (ruling 45 lets it be edited, as a private copy)', async () => {
     const remove = await t.request('POST', `/api/merchants/${SAGUARO}/offers/${SEED_COFFEE}/remove`, {}, {}, 'own');
     expect(remove.status).toBe(400);
-    expect(remove.json.error.message).toMatch(/sample offer/);
-    const edit = await t.request('POST', `/api/merchants/${SAGUARO}/offers/${SEED_COFFEE}/edit`, latte(), {}, 'own');
-    expect(edit.status).toBe(400);
+    expect(remove.json.error.message).toMatch(/sample offer cannot be removed/);
     const row = await t.db.query('SELECT title, price_cents::int AS p, removed_at, owner_session_id FROM offers WHERE id = $1', [SEED_COFFEE]);
     expect(row.rows[0]).toEqual({ title: 'Any drink plus pastry', p: 600, removed_at: null, owner_session_id: null });
   });
@@ -205,14 +203,128 @@ describe('posted offers belong to their session', () => {
   });
 });
 
+describe('editing a seed offer makes a private copy (build ruling 45)', () => {
+  let t: T;
+  const appts: Record<string, Record<string, string>> = {};
+  const stop = async (session: string, title: string) => {
+    if (!appts[session]) {
+      await t.request('POST', '/api/calendar/demo-connection', {}, {}, session);
+      const week = (await t.request('GET', '/api/appointments/upcoming', undefined, {}, session)).json.data;
+      appts[session] = Object.fromEntries(week.appointments.map((a: { title: string; id: string }) => [a.title, a.id]));
+    }
+    return appts[session][title];
+  };
+  const matched = async (session: string) =>
+    (await t.app.services.picks.candidatesFor(t.cookieJar[session], await stop(session, 'Client meeting'))).match.candidates.map((c) => c.offer.id);
+  const listed = async (session: string) =>
+    (await t.request('GET', `/api/merchants/${SAGUARO}/dashboard`, undefined, {}, session)).json.data.offers as { id: string; title: string; priceCents: number; replacesOfferId: string | null }[];
+  const editSeed = (session: string, over: Record<string, unknown> = {}, id = SEED_COFFEE) =>
+    t.request('POST', `/api/merchants/${SAGUARO}/offers/${id}/edit`, latte({ title: 'My pastry deal', priceCents: 500, ...over }), {}, session);
+  const handoff = (session: string, offer: string, at = TUE_0930) => t.request('POST', '/api/handoff', { offer, ...OLD_MAIN, at }, {}, session);
+  const preview = (session: string, offer: string) => t.request('GET', `/api/handoff?${new URLSearchParams({ offer, ...OLD_MAIN, at: TUE_0930 })}`, undefined, {}, session);
+  const seedRow = async () => (await t.db.query('SELECT * FROM offers WHERE id = $1', [SEED_COFFEE])).rows[0];
+
+  beforeAll(async () => {
+    t = await createTestApp();
+  });
+  afterAll(async () => t.close());
+
+  it('replaces the seed offer in the editing session only; the seed row, other sessions, /mcp and the seats keep the seed offer as it was', async () => {
+    // Before the edit: a completed purchase of the seed offer, and open picks for it in this session and in another.
+    const picks = (await t.request('GET', `/api/appointments/${await stop('ed', 'Client meeting')}/picks`, undefined, {}, 'ed')).json.data.picks;
+    const seedPick = picks.find((p: { offerId: string }) => p.offerId === SEED_COFFEE);
+    const accept = await t.request('POST', `/api/proposals/${seedPick.proposalId}/accept`, undefined, {}, 'ed');
+    await t.request('POST', '/api/purchases', { proposalId: seedPick.proposalId, confirmationToken: accept.json.data.confirmationToken }, {}, 'ed');
+    const receipt = (await t.request('POST', `/api/pay/return/${seedPick.proposalId}`, undefined, {}, 'ed')).json.data.receipt;
+    const mineOpen = (await handoff('ed', SEED_COFFEE)).json.data.proposalId;
+    const theirsOpen = (await handoff('other', SEED_COFFEE)).json.data.proposalId;
+    const before = await seedRow();
+
+    const edit = await editSeed('ed');
+    expect(edit.status).toBe(201);
+    const copy = edit.json.data.offer;
+    expect(edit.json.data).toMatchObject({ replacedOfferId: SEED_COFFEE, picksWithdrawn: 1 });
+    expect(copy).toMatchObject({ title: 'My pastry deal', priceCents: 500, postedByYou: true, replacesOfferId: SEED_COFFEE });
+    expect(await seedRow()).toEqual(before); // the seed row itself is never changed
+
+    // The editing session: the copy is listed, matched and handed over; the seed offer is not.
+    expect((await listed('ed')).map((o) => o.id)).toEqual([copy.id]);
+    expect(await matched('ed')).toContain(copy.id);
+    expect(await matched('ed')).not.toContain(SEED_COFFEE);
+    expect((await preview('ed', SEED_COFFEE)).status).toBe(404);
+    expect((await preview('ed', copy.id)).json.data).toMatchObject({ fits: true, priceCents: 500 });
+
+    // Everyone else: the seed offer, with its original terms.
+    expect((await listed('other')).map((o) => [o.id, o.title, o.priceCents])).toEqual([[SEED_COFFEE, 'Any drink plus pastry', 600]]);
+    expect(await matched('other')).toContain(SEED_COFFEE);
+    expect(await matched('other')).not.toContain(copy.id);
+    const mcp = await mcpFind(t, TUE_0930);
+    expect(mcp.map((o) => o.offer_id)).toContain(SEED_COFFEE);
+    expect(mcp.map((o) => o.offer_id)).not.toContain(copy.id);
+    expect((mcp as unknown as { offer_id: string; price_cents: number }[]).find((o) => o.offer_id === SEED_COFFEE)!.price_cents).toBe(600);
+    expect((await mcpGet(t, copy.id)).isError).toBe(true);
+    for (const session of ['ed', 'other']) {
+      const seats = (await t.request('GET', '/api/seats', undefined, {}, session)).json.data.merchants;
+      expect(seats.find((m: { merchantId: string }) => m.merchantId === SAGUARO)).toMatchObject({ offerTitle: 'Any drink plus pastry', offerPriceCents: 600 });
+    }
+
+    // Open picks for the seed offer are withdrawn in the editing session only.
+    expect((await t.db.query('SELECT status FROM proposals WHERE id = $1', [mineOpen])).rows[0].status).toBe('expired');
+    expect((await t.db.query('SELECT status FROM proposals WHERE id = $1', [theirsOpen])).rows[0].status).toBe('proposed');
+    // The completed purchase of the seed offer keeps its receipt and its sales feed row.
+    expect((await t.request('GET', `/api/proposals/${seedPick.proposalId}/receipt`, undefined, {}, 'ed')).json.data)
+      .toMatchObject({ offerTitle: 'Any drink plus pastry', amountCents: 600, redemptionCode: receipt.redemptionCode });
+    const feed = (await t.request('GET', `/api/merchants/${SAGUARO}/sales-feed`, undefined, {}, 'ed')).json.data.items;
+    expect(feed.find((i: { redemptionCode: string }) => i.redemptionCode === receipt.redemptionCode)).toMatchObject({ offerTitle: 'Any drink plus pastry', amountCents: 600 });
+
+    // The seed offer is replaced here, so it cannot be edited again here: the copy is what to edit.
+    expect((await editSeed('ed')).status).toBe(404);
+    // And it still cannot be removed.
+    expect((await t.request('POST', `/api/merchants/${SAGUARO}/offers/${SEED_COFFEE}/remove`, {}, {}, 'ed')).status).toBe(400);
+  });
+
+  it('editing the copy keeps replacing the same seed offer, with one live copy', async () => {
+    const first = (await editSeed('twice')).json.data.offer;
+    const second = (await editSeed('twice', { title: 'Second take' }, first.id)).json.data.offer;
+    const third = (await editSeed('twice', { title: 'Third take', priceCents: 450 }, second.id)).json.data.offer;
+    expect(third).toMatchObject({ replacesOfferId: SEED_COFFEE, title: 'Third take' });
+    const live = await t.db.query(
+      'SELECT id FROM offers WHERE owner_session_id = $1 AND replaces_offer_id = $2 AND removed_at IS NULL',
+      [t.cookieJar.twice, SEED_COFFEE],
+    );
+    expect(live.rows.map((r) => r.id)).toEqual([third.id]);
+    expect((await listed('twice')).map((o) => o.id)).toEqual([third.id]);
+    expect(await matched('twice')).not.toContain(SEED_COFFEE);
+  });
+
+  it('removing the copy brings the seed offer back for this session', async () => {
+    const copy = (await editSeed('undo')).json.data.offer;
+    const r = await t.request('POST', `/api/merchants/${SAGUARO}/offers/${copy.id}/remove`, {}, {}, 'undo');
+    expect(r.status).toBe(200);
+    expect((await listed('undo')).map((o) => o.id)).toEqual([SEED_COFFEE]);
+    expect(await matched('undo')).toContain(SEED_COFFEE);
+    expect((await preview('undo', SEED_COFFEE)).status).toBe(200);
+  });
+
+  it('Reset demo brings the seed offer back for this session', async () => {
+    await editSeed('reset');
+    expect((await listed('reset')).map((o) => o.id)).not.toContain(SEED_COFFEE);
+    const r = await t.request('POST', '/api/demo/reset', {}, {}, 'reset');
+    expect(r.json.data.postedOffersRemoved).toBe(1);
+    expect((await listed('reset')).map((o) => [o.id, o.replacesOfferId])).toEqual([[SEED_COFFEE, null]]);
+    expect(await matched('reset')).toContain(SEED_COFFEE);
+  });
+});
+
 describe('the limit on posted offers', () => {
-  it(`allows ${OFFER_POSTS_PER_SESSION_PER_HOUR} posts per session per hour, edits included`, async () => {
+  it(`allows ${OFFER_POSTS_PER_SESSION_PER_HOUR} posts per session per hour, edits included (of a posted offer and of a sample offer)`, async () => {
     const t = await createTestApp();
     try {
       const url = `/api/merchants/${SAGUARO}/offers`;
       const first = await t.request('POST', url, latte(), {}, 'busy');
-      for (let i = 1; i < OFFER_POSTS_PER_SESSION_PER_HOUR - 1; i++) expect((await t.request('POST', url, latte(), {}, 'busy')).status).toBe(201);
+      for (let i = 1; i < OFFER_POSTS_PER_SESSION_PER_HOUR - 2; i++) expect((await t.request('POST', url, latte(), {}, 'busy')).status).toBe(201);
       expect((await t.request('POST', `${url}/${first.json.data.id}/edit`, latte({ title: 'Edited' }), {}, 'busy')).status).toBe(201);
+      expect((await t.request('POST', `${url}/${SEED_COFFEE}/edit`, latte({ title: 'My version' }), {}, 'busy')).status).toBe(201);
       const over = await t.request('POST', url, latte(), {}, 'busy');
       expect(over.status).toBe(429);
       expect(over.json.error.code).toBe('rate_limited');

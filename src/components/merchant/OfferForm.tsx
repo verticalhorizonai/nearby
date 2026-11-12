@@ -173,8 +173,10 @@ export function OfferForm({ merchantId, onPublished, onCancel, editing }: OfferF
         {editing ? 'Edit offer' : 'New offer'}
       </h3>
       {editing && (
-        <p className="-mt-3 text-[13px] text-secondary-text">
-          Saving replaces the offer: open picks for it are withdrawn, and past sales and receipts keep the old title and price.
+        <p className="-mt-3 text-[13px] text-secondary-text" data-testid="offer-edit-note">
+          {editing.postedByYou
+            ? 'Saving replaces the offer: open picks for it are withdrawn, and past sales and receipts keep the old title and price.'
+            : 'This is a sample offer. Saving makes your own version, which replaces it in your demo only; other visitors still see the sample. Your open picks for it are withdrawn.'}
         </p>
       )}
 

@@ -2,7 +2,7 @@
 // Pick card (REQ-02-02, REQ-08-09; spec 3.11.2 The pick card; ruling 3: the score is not drawn).
 import '@testing-library/jest-dom/vitest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Pick } from '@/shared/types';
 import { PickCard } from './PickCard';
 
@@ -25,6 +25,60 @@ const pick: Pick = {
   status: 'proposed',
   purchased: false,
 };
+
+describe('a bought pick shows its redemption code again (build ruling 38)', () => {
+  const receipt = {
+    purchaseId: 'u-1', merchantName: 'Saguaro Bean Co.', merchantIsSample: true, offerTitle: 'Any drink plus pastry',
+    amountCents: 600, redemptionCode: 'K7M3QX', isDeposit: false, completedAt: '2026-11-17T16:40:00.000Z',
+  };
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('opens the dialog with the receipt from the read-only route, closes on Escape and returns focus to the control', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ success: true, data: receipt }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<PickCard pick={{ ...pick, status: 'accepted', purchased: true }} onYes={() => undefined} onNotNow={() => undefined} />);
+    expect(screen.getByTestId('pick-status')).toHaveTextContent('Bought');
+    const control = screen.getByRole('button', { name: /^Show redemption code/ });
+    expect(control.className).toMatch(/min-h-touch/);
+    expect(control.className).toMatch(/focus-visible:ring-2/);
+    control.focus();
+    fireEvent.click(control);
+    const dialog = await screen.findByRole('dialog', { name: 'Your redemption code' });
+    expect(await screen.findByTestId('redemption-code')).toHaveTextContent('K7M3QX');
+    expect(dialog).toHaveTextContent('Saguaro Bean Co.');
+    expect(dialog).toHaveTextContent('Sample');
+    expect(dialog).toHaveTextContent('Any drink plus pastry');
+    expect(dialog).toHaveTextContent('$6.00');
+    expect(dialog).toHaveTextContent('PayPal sandbox payment');
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit | undefined];
+    expect(String(url)).toBe(`/api/proposals/${pick.proposalId}/receipt`);
+    expect(init?.method ?? 'GET').toBe('GET');
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(control);
+    cleanup();
+  });
+
+  it('closes on its close button; a deposit receipt says redeem in store', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ success: true, data: { ...receipt, isDeposit: true, amountCents: 150 } }), { status: 200, headers: { 'content-type': 'application/json' } })));
+    render(<PickCard pick={{ ...pick, status: 'accepted', purchased: true }} onYes={() => undefined} onNotNow={() => undefined} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Show redemption code/ }));
+    expect(await screen.findByTestId('deposit-note')).toHaveTextContent('Redeem in store.');
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    cleanup();
+  });
+
+  it('nothing of this shows on a pick that is not bought', () => {
+    render(<PickCard pick={{ ...pick, status: 'accepted' }} onYes={() => undefined} onNotNow={() => undefined} />);
+    expect(screen.queryByRole('button', { name: /Show redemption code/ })).toBeNull();
+    expect(screen.queryByTestId('pick-bought')).toBeNull();
+    cleanup();
+    render(<PickCard pick={pick} onYes={() => undefined} onNotNow={() => undefined} />);
+    expect(screen.queryByRole('button', { name: /Show redemption code/ })).toBeNull();
+    cleanup();
+  });
+});
 
 describe('PickCard status (AC-REQ-03-12-01)', () => {
   it('a bought pick shows Bought and offers neither Yes nor Not now', () => {

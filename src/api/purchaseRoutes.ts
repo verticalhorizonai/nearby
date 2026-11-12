@@ -15,6 +15,9 @@ export function registerPurchaseRoutes(app: FastifyInstance, s: AppServices): vo
   app.post<{ Params: { proposalId: string } }>('/api/proposals/:proposalId/accept', async (req, reply) =>
     ok(reply, await s.proposals.accept(req.sessionId, requireUuid(req.params.proposalId, 'proposalId'))),
   );
+  app.get<{ Params: { proposalId: string } }>('/api/proposals/:proposalId/receipt', async (req, reply) =>
+    ok(reply, await s.purchases.viewReceipt(req.sessionId, requireUuid(req.params.proposalId, 'proposalId'))),
+  );
   app.post<{ Params: { proposalId: string } }>('/api/proposals/:proposalId/decline', async (req, reply) =>
     ok(reply, await s.proposals.decline(req.sessionId, requireUuid(req.params.proposalId, 'proposalId'))),
   );

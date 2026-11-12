@@ -664,6 +664,13 @@ export type PaymentReturnResult =
 
 export type PaymentReturnResponse = ApiResponse<PaymentReturnResult>;
 
+/**
+ * GET /api/proposals/{proposalId}/receipt (build ruling 38): the receipt of a pick this browser session bought, so the
+ * redemption code can be shown again from the pick card. Read only: never calls PayPal, never changes anything. 404
+ * unless the proposal is this session's and its purchase is completed.
+ */
+export type ProposalReceiptResponse = ApiResponse<Receipt>;
+
 // ============================================================================
 // LIVE SALES FEED (REQ-04-04, REQ-04-05)
 // ============================================================================

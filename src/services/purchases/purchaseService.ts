@@ -183,6 +183,20 @@ export class PurchaseService {
     return this.failed(proposalId);
   }
 
+  /**
+   * GET /api/proposals/{proposalId}/receipt (build ruling 38): the completed purchase's receipt, for this session only.
+   * Read only — no PayPal call and no write. Not this session's proposal, or no completed purchase: 404.
+   */
+  async viewReceipt(sessionId: string, proposalId: string): Promise<Receipt> {
+    if (!(await loadProposal(this.db, sessionId, proposalId))) throw notFound('No proposal exists with this id.');
+    const { rows } = await this.db.query<{ id: string }>(
+      `SELECT id FROM purchases WHERE proposal_id = $1 AND status = 'completed' ORDER BY completed_at DESC LIMIT 1`,
+      [proposalId],
+    );
+    if (!rows[0]) throw notFound('This pick has no completed purchase.');
+    return this.receipt(this.db, rows[0].id);
+  }
+
   /** POST /api/pay/cancel/{proposalId}: the purchase fails, the pick returns to proposed; a completed one is never undone. */
   async handleCancel(sessionId: string, proposalId: string): Promise<PaymentReturnResult> {
     return withTransaction(this.db, async (tx) => {

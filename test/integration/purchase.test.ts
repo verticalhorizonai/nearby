@@ -164,6 +164,49 @@ describe('picks bought per stop on My week (build ruling 36)', () => {
   });
 });
 
+describe('the receipt of a bought pick, shown again (build ruling 38)', () => {
+  const receiptOf = (proposalId: string, session = 'a') => t.request('GET', `/api/proposals/${proposalId}/receipt`, undefined, {}, session);
+
+  it('returns the completed purchase\'s receipt to its own session: the same code as the return page and the sales feed; no outbound call', async () => {
+    const { proposalId, token } = await acceptFirst();
+    await t.request('POST', '/api/purchases', { proposalId, confirmationToken: token });
+    const ret = await t.request('POST', `/api/pay/return/${proposalId}`);
+    const before = t.paypalTransport.calls.length;
+    const r = await receiptOf(proposalId);
+    expect(r.status).toBe(200);
+    expect(r.json.data).toEqual(ret.json.data.receipt);
+    expect(r.json.data.merchantName).toBe('Saguaro Bean Co.');
+    const feed = await t.request('GET', '/api/merchants/00000000-0000-4000-8000-000000000001/sales-feed');
+    expect(feed.json.data.items[0].redemptionCode).toBe(r.json.data.redemptionCode);
+    expect(t.paypalTransport.calls.length).toBe(before); // never calls PayPal
+    const rows = (await t.db.query('SELECT status, updated_at FROM purchases WHERE proposal_id = $1', [proposalId])).rows;
+    await receiptOf(proposalId);
+    expect((await t.db.query('SELECT status, updated_at FROM purchases WHERE proposal_id = $1', [proposalId])).rows).toEqual(rows); // changes nothing
+    expect((await receiptOf(proposalId, 'b')).status).toBe(404); // another session
+  });
+
+  it('answers 404 for a pick with no purchase, or one created, approved, failed or cancelled', async () => {
+    const { proposalId, token } = await acceptFirst();
+    expect((await receiptOf(proposalId)).status).toBe(404); // accepted, no purchase
+    await t.request('POST', '/api/purchases', { proposalId, confirmationToken: token });
+    expect((await receiptOf(proposalId)).status).toBe(404); // created
+    await t.db.query(`UPDATE purchases SET status = 'approved' WHERE proposal_id = $1`, [proposalId]);
+    expect((await receiptOf(proposalId)).status).toBe(404); // approved
+    await t.request('POST', `/api/pay/cancel/${proposalId}`);
+    expect((await receiptOf(proposalId)).status).toBe(404); // cancelled (failed)
+    const again = (await t.request('POST', `/api/proposals/${proposalId}/accept`)).json.data.confirmationToken;
+    await t.request('POST', '/api/purchases', { proposalId, confirmationToken: again });
+    t.paypalTransport.queue((paypalVariants as Fixture[])[0]);
+    await t.request('POST', `/api/pay/return/${proposalId}`);
+    expect((await receiptOf(proposalId)).status).toBe(404); // capture failed
+    const calls = t.paypalTransport.calls.length;
+    const r = await receiptOf(proposalId);
+    expect(r.json.error.code).toBe('not_found');
+    expect(t.paypalTransport.calls.length).toBe(calls);
+    expect((await t.request('GET', '/api/proposals/not-a-uuid/receipt')).status).toBe(400);
+  });
+});
+
 describe('the token gate: 403 and nothing at PayPal', () => {
   const orders = () => t.paypalTransport.calls.filter((c) => c.url.endsWith('/v2/checkout/orders')).length;
 

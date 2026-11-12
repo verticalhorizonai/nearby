@@ -7,7 +7,7 @@ import { APPOINTMENT_WINDOW_DAYS, ASSISTANT_STOP_MINUTES, MCP_MAX_RADIUS_MILES }
 import { matchOffers, roundScore, type Candidate } from '../matching/matcher.js';
 import { haversineMeters, METERS_PER_MILE } from '../matching/geo.js';
 import { DOWNTOWN_TUCSON, MAX_DISTANCE_FROM_DOWNTOWN_M } from '../calendar/eventFilter.js';
-import { loadMatchOffers } from '../picks/picksService.js';
+import { loadMatchOffers, visibleOffersSql } from '../picks/picksService.js';
 import { formatMiles, formatValidWindow } from '../agent/fallback.js';
 
 /** ISO 8601 date and time with an offset (Z or ±HH:MM), as the tools require. */
@@ -73,13 +73,14 @@ export interface OfferFacts {
   valid_end_time: string;
 }
 
-export async function loadOfferFacts(db: Db, offerId: string): Promise<OfferFacts | null> {
+/** One offer this session may see (build ruling 44); sessionId null (the MCP tools): a seed offer only. */
+export async function loadOfferFacts(db: Db, offerId: string, sessionId: string | null): Promise<OfferFacts | null> {
   if (!isUuid(offerId)) return null;
   const { rows } = await db.query<OfferFacts>(
     `SELECT o.id, o.merchant_id, m.name AS merchant_name, m.is_sample AS merchant_is_sample, o.title, o.price_cents::int AS price_cents,
             o.is_deposit, o.category, o.valid_days, o.valid_start_time, o.valid_end_time
-       FROM offers o JOIN merchants m ON m.id = o.merchant_id WHERE o.id = $1`,
-    [offerId],
+       FROM offers o JOIN merchants m ON m.id = o.merchant_id WHERE o.id = $1 AND ${visibleOffersSql('o', 2)}`,
+    [offerId, sessionId],
   );
   return rows[0] ?? null;
 }
@@ -103,9 +104,16 @@ export function offerFields(f: OfferFacts) {
   };
 }
 
-/** The app's matching (3.5) for a stop. alreadyBought holds offers a session bought for that stop. */
-export async function matchStop(db: Db, stop: StopQuery, alreadyBought: ReadonlySet<string> = new Set()) {
-  return matchOffers({ id: 'assistant-stop', startsAt: stop.startsAt, endsAt: stop.endsAt, location: stop.location }, await loadMatchOffers(db), alreadyBought);
+/**
+ * The app's matching (3.5) for a stop, over the offers the session may see (sessionId null, the MCP tools: the seed
+ * offers only; build ruling 44). alreadyBought holds offers a session bought for that stop.
+ */
+export async function matchStop(db: Db, stop: StopQuery, sessionId: string | null, alreadyBought: ReadonlySet<string> = new Set()) {
+  return matchOffers(
+    { id: 'assistant-stop', startsAt: stop.startsAt, endsAt: stop.endsAt, location: stop.location },
+    await loadMatchOffers(db, sessionId),
+    alreadyBought,
+  );
 }
 
 /** A candidate that may be shown: it passed the four rules and scores at least 0.35 (3.5.3). */
@@ -133,11 +141,11 @@ export class OfferSearch {
     }
     if (!inDemoArea(stop.location)) return { offers: [], note: OUT_OF_AREA_NOTE };
     if (!inWindow(stop.startsAt, this.now())) return { offers: [], note: OUTSIDE_WINDOW_NOTE };
-    const match = await matchStop(this.db, stop);
+    const match = await matchStop(this.db, stop, null);
     const within = match.shown.filter((c) => c.distanceMeters <= radiusMiles * METERS_PER_MILE);
     const offers = [];
     for (const c of within) {
-      const facts = await loadOfferFacts(this.db, c.offer.id);
+      const facts = await loadOfferFacts(this.db, c.offer.id, null);
       if (!facts) continue;
       const { valid_window, ...head } = offerFields(facts);
       offers.push({
@@ -157,7 +165,7 @@ export class OfferSearch {
    * link for that stop (still no distance); without them those three are null (ruling 42).
    */
   async getOffer(input: { offer_id: unknown; lat?: unknown; lng?: unknown; starts_at?: unknown }) {
-    const facts = typeof input.offer_id === 'string' ? await loadOfferFacts(this.db, input.offer_id) : null;
+    const facts = typeof input.offer_id === 'string' ? await loadOfferFacts(this.db, input.offer_id, null) : null;
     if (!facts) return { error: 'No offer exists with this offer_id.' };
     const base = offerFields(facts);
     const none = { ...base, time_fit: null, score: null, checkout_url: null };
@@ -169,7 +177,7 @@ export class OfferSearch {
     const { stop } = parsed;
     if (!inDemoArea(stop.location)) return { offer: none, note: OUT_OF_AREA_NOTE };
     if (!inWindow(stop.startsAt, this.now())) return { offer: none, note: OUTSIDE_WINDOW_NOTE };
-    const c = showable((await matchStop(this.db, stop)).candidates, facts.id);
+    const c = showable((await matchStop(this.db, stop, null)).candidates, facts.id);
     if (!c) return { offer: none, note: 'This offer does not fit that place and time.' };
     return {
       offer: { ...base, time_fit: c.timeFit, score: roundScore(c.score), checkout_url: checkoutUrl(this.appBaseUrl, facts.id, stop, String(input.starts_at)) },

@@ -6,7 +6,7 @@ import { ok } from './http.js';
 import type { HandoffService } from '../services/handoff/handoffService.js';
 
 export function registerHandoffRoutes(app: FastifyInstance, handoff: HandoffService): void {
-  app.get<{ Querystring: Partial<HandoffParams> }>('/api/handoff', async (req, reply) => ok(reply, await handoff.preview(req.query ?? {})));
+  app.get<{ Querystring: Partial<HandoffParams> }>('/api/handoff', async (req, reply) => ok(reply, await handoff.preview(req.sessionId, req.query ?? {})));
   app.post<{ Body: Partial<HandoffParams> }>('/api/handoff', async (req, reply) => {
     const result = await handoff.accept(req.sessionId, (req.body ?? {}) as Partial<HandoffParams>);
     return ok(reply, result, result.created ? 201 : 200);

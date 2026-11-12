@@ -26,12 +26,25 @@ interface OfferRow {
   valid_end_time: string;
 }
 
-/** All live offers with their merchants (offers are live from the moment they are published, 3.9.1). */
-export async function loadMatchOffers(db: Db): Promise<MatchOffer[]> {
+/**
+ * Which offers a session may see (build ruling 44): the seed offers, which are shared, and the offers this session
+ * posted; never a removed one. With no session (the public MCP tools), the seed offers only. `n` is the number of the
+ * query parameter that holds the session id (or null).
+ */
+export function visibleOffersSql(alias: string, n: number): string {
+  return `${alias}.removed_at IS NULL AND (${alias}.owner_session_id IS NULL OR ${alias}.owner_session_id = $${n})`;
+}
+
+/**
+ * All live offers this session may see, with their merchants (offers are live from the moment they are published,
+ * 3.9.1). sessionId null: the seed offers only (build ruling 44).
+ */
+export async function loadMatchOffers(db: Db, sessionId: string | null): Promise<MatchOffer[]> {
   const { rows } = await db.query<OfferRow>(
     `SELECT o.id, o.merchant_id, m.name AS merchant_name, m.location_lat AS lat, m.location_lng AS lng, o.category,
             o.valid_days, o.valid_start_time, o.valid_end_time
-       FROM offers o JOIN merchants m ON m.id = o.merchant_id ORDER BY o.id`,
+       FROM offers o JOIN merchants m ON m.id = o.merchant_id WHERE ${visibleOffersSql('o', 1)} ORDER BY o.id`,
+    [sessionId],
   );
   return rows.map((r) => ({
     id: r.id,
@@ -67,7 +80,7 @@ export class PicksService {
     );
     const match = matchOffers(
       { id: appt.id, startsAt: appt.starts_at, endsAt: appt.ends_at, location: { lat: appt.location_lat!, lng: appt.location_lng! } },
-      await loadMatchOffers(this.db),
+      await loadMatchOffers(this.db, sessionId),
       new Set(bought.rows.map((r) => r.offer_id)),
     );
     return { match, appt };

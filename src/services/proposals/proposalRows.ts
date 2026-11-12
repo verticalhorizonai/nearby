@@ -31,10 +31,12 @@ export interface ProposalJoinedRow {
   merchant_name: string;
   merchant_is_sample: boolean;
   purchased: boolean;
+  /** Set when the offer was removed or replaced by an edit (build ruling 44). */
+  offer_removed_at: Date | null;
 }
 
 const SELECT = `SELECT p.*, o.title AS offer_title, o.price_cents, o.regular_price_cents, o.category, o.valid_days,
-  o.valid_start_time, o.valid_end_time, o.is_deposit, m.name AS merchant_name, m.is_sample AS merchant_is_sample,
+  o.valid_start_time, o.valid_end_time, o.is_deposit, o.removed_at AS offer_removed_at, m.name AS merchant_name, m.is_sample AS merchant_is_sample,
   EXISTS (SELECT 1 FROM purchases u WHERE u.proposal_id = p.id AND u.status = 'completed') AS purchased
   FROM proposals p JOIN offers o ON o.id = p.offer_id JOIN merchants m ON m.id = p.merchant_id`;
 

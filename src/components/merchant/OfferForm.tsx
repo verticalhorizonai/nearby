@@ -3,8 +3,10 @@
 // time. The shared validator (src/validators/offerForm.ts) runs here beside each field and again on the server; a
 // form that breaks a rule is refused with a message beside the field and nothing is sent. Dollars become integer
 // cents with parseDollarsToCents: at most two decimals, never rounded.
+// Edit (build ruling 44): the same form, filled in with an offer this session posted, under the same validation. Saving
+// posts to the edit route, which removes the old offer and creates a new one with these fields.
 import { useMemo, useRef, useState, type FormEvent } from 'react';
-import type { CreateOfferRequest, DayOfWeek, FieldError, Offer, OfferCategory, OfferFormField } from '@/shared/types';
+import type { CreateOfferRequest, DayOfWeek, EditOfferResult, FieldError, MerchantOffer, OfferCategory, OfferFormField } from '@/shared/types';
 import { OFFER_CATEGORIES, OFFER_TITLE_MAX_LENGTH } from '@/shared/types';
 import { DAYS_OF_WEEK, OFFER_FORM_MESSAGES, parseDollarsToCents, titleLength, validateCreateOffer } from '@/validators/offerForm';
 import { Button } from '@/components/ui/button';
@@ -41,6 +43,24 @@ interface Values {
 
 const EMPTY: Values = { title: '', price: '', regularPrice: '', category: '', days: [], start: '', end: '' };
 
+/** Integer cents to the dollars the field shows ("6.00"). */
+function centsToDollars(cents: number): string {
+  return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
+}
+
+/** The form's values for an offer being edited. */
+export function valuesFor(o: MerchantOffer): Values {
+  return {
+    title: o.title,
+    price: centsToDollars(o.priceCents),
+    regularPrice: o.regularPriceCents === null ? '' : centsToDollars(o.regularPriceCents),
+    category: o.category,
+    days: [...o.validDays],
+    start: o.validStartTime,
+    end: o.validEndTime,
+  };
+}
+
 /** The request the form would send: dollars to integer cents (ruling 4). An unreadable amount stays unreadable, so the
  * validator refuses it beside its field instead of anything being rounded. */
 function toCreateOfferRequest(v: Values): Record<string, unknown> {
@@ -73,12 +93,15 @@ function FieldMessage({ id, message }: { id: string; message?: string }) {
 
 interface OfferFormProps {
   merchantId: string;
-  onPublished: (offer: Offer) => void;
+  /** The new offer; for an edit, also the id of the offer it replaces. */
+  onPublished: (offer: MerchantOffer, replacedOfferId?: string) => void;
   onCancel: () => void;
+  /** An offer this session posted: the form edits it (build ruling 44). */
+  editing?: MerchantOffer;
 }
 
-export function OfferForm({ merchantId, onPublished, onCancel }: OfferFormProps) {
-  const [values, setValues] = useState<Values>(EMPTY);
+export function OfferForm({ merchantId, onPublished, onCancel, editing }: OfferFormProps) {
+  const [values, setValues] = useState<Values>(() => (editing ? valuesFor(editing) : EMPTY));
   const [touched, setTouched] = useState<Set<OfferFormField>>(new Set());
   const [submitted, setSubmitted] = useState(false);
   const [serverErrors, setServerErrors] = useState<Partial<Record<OfferFormField, string>>>({});
@@ -119,15 +142,22 @@ export function OfferForm({ merchantId, onPublished, onCancel }: OfferFormProps)
     const body: CreateOfferRequest = check.value;
     setSending(true);
     try {
-      const offer = await api.post<Offer>(`/api/merchants/${encodeURIComponent(merchantId)}/offers`, body);
-      onPublished(offer);
+      const base = `/api/merchants/${encodeURIComponent(merchantId)}/offers`;
+      if (editing) {
+        const r = await api.post<EditOfferResult>(`${base}/${encodeURIComponent(editing.id)}/edit`, body);
+        onPublished(r.offer, r.replacedOfferId);
+      } else {
+        onPublished(await api.post<MerchantOffer>(base, body));
+      }
     } catch (err) {
       if (isApiError(err) && err.fieldErrors.length > 0) {
         const map = errorMap(err.fieldErrors);
         setServerErrors(map);
         focusFirstError(map);
+      } else if (isApiError(err) && err.status === 429) {
+        setFormError(`${err.message} Nothing was saved.`);
       } else {
-        setFormError('The offer was not published. Nothing was saved. Try again in a moment.');
+        setFormError(editing ? 'The changes were not saved. Try again in a moment.' : 'The offer was not published. Nothing was saved. Try again in a moment.');
       }
     } finally {
       setSending(false);
@@ -140,8 +170,13 @@ export function OfferForm({ merchantId, onPublished, onCancel }: OfferFormProps)
   return (
     <form ref={formRef} onSubmit={submit} noValidate className="flex flex-col gap-5" aria-labelledby="new-offer-heading" data-testid="offer-form">
       <h3 id="new-offer-heading" className="font-display text-2xl font-bold">
-        New offer
+        {editing ? 'Edit offer' : 'New offer'}
       </h3>
+      {editing && (
+        <p className="-mt-3 text-[13px] text-secondary-text">
+          Saving replaces the offer: open picks for it are withdrawn, and past sales and receipts keep the old title and price.
+        </p>
+      )}
 
       {/* Title */}
       <div className="flex flex-col gap-1.5">
@@ -315,7 +350,7 @@ export function OfferForm({ merchantId, onPublished, onCancel }: OfferFormProps)
 
       <div className="flex flex-wrap gap-2.5">
         <Button type="submit" size="lg" disabled={sending}>
-          {sending ? 'Publishing…' : 'Publish'}
+          {editing ? (sending ? 'Saving…' : 'Save changes') : sending ? 'Publishing…' : 'Publish'}
         </Button>
         <Button type="button" size="lg" variant="secondary" onClick={onCancel} disabled={sending}>
           Cancel

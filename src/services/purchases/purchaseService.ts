@@ -59,6 +59,8 @@ export class PurchaseService {
       await applyLazyTransitions(tx, now, { sessionId, proposalId });
       const p = (await loadProposal(tx, sessionId, proposalId))!;
       if (p.status !== 'accepted') throw badRequest(`This pick is ${p.status}; tap Yes again.`);
+      // A removed offer starts no new payment; one already at PayPal still completes (build ruling 44).
+      if (p.offer_removed_at) throw badRequest('The merchant removed this offer.');
       const inflight = await tx.query<PurchaseRow>(
         `SELECT * FROM purchases WHERE proposal_id = $1 AND status IN ('created','approved','completed') FOR UPDATE`,
         [proposalId],

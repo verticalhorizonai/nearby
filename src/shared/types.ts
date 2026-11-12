@@ -415,7 +415,7 @@ export interface SeedOfferInput extends CreateOfferRequest {
   isDeposit: boolean;
 }
 
-/** Internal: idempotent re-seed upsert (REQ-06-01). No HTTP offer edit endpoint. */
+/** Internal: idempotent re-seed upsert (REQ-06-01). An HTTP edit replaces the offer instead (build ruling 44). */
 export interface UpdateOfferRequest {
   id: string;
   title?: string;
@@ -430,12 +430,22 @@ export interface UpdateOfferRequest {
   isDeposit?: boolean;
 }
 
-export type CreateOfferResponse = ApiResponse<Offer>;
+/**
+ * An offer as the merchant dashboard lists it to one browser session (build ruling 44): a seed offer (shared, a sample
+ * offer) or one this session posted. Offers other sessions posted, and removed offers, are never listed.
+ */
+export interface MerchantOffer extends Offer {
+  /** True for an offer this browser session posted: it can be edited and removed. False for a seed (sample) offer. */
+  postedByYou: boolean;
+}
+
+export type CreateOfferResponse = ApiResponse<MerchantOffer>;
 
 /** Merchant dashboard payload: profile card plus offers list (REQ-04-01). */
 export interface MerchantDashboard {
   merchant: Merchant;
-  offers: Offer[];
+  /** The seed offers and this session's own, newest first (build ruling 44). */
+  offers: MerchantOffer[];
 }
 
 export type MerchantDashboardResponse = ApiResponse<MerchantDashboard>;
@@ -783,6 +793,8 @@ export interface ResetDemoResult {
   appointmentsReenabled: number;
   /** Stops an outside assistant added through a checkout handoff; removed with their picks (build ruling 42). */
   assistantStopsRemoved: number;
+  /** Offers this session posted, removed (build ruling 44). */
+  postedOffersRemoved: number;
 }
 
 export type ResetDemoResponse = ApiResponse<ResetDemoResult>;
@@ -901,3 +913,31 @@ export type AgentRunsResponse = ApiResponse<AgentRunsResult>;
 
 /** How often the client asks for the runs in flight, and only while something is in flight. */
 export const AGENT_RUNS_POLL_MS = 700 as const;
+
+// ============================================================================
+// A POSTED OFFER BELONGS TO ITS SESSION: VIEW, REMOVE, EDIT (build ruling 44)
+// ============================================================================
+
+/** Offers posted per browser session per hour; an edit counts as a post. */
+export const OFFER_POSTS_PER_SESSION_PER_HOUR = 10 as const;
+
+/** POST /api/merchants/{merchantId}/offers/{offerId}/remove: the offer is marked removed, never deleted. */
+export interface RemoveOfferResult {
+  offerId: string;
+  /** This session's open picks for the offer that were withdrawn (they end as expired). */
+  picksWithdrawn: number;
+}
+
+export type RemoveOfferResponse = ApiResponse<RemoveOfferResult>;
+
+/**
+ * POST /api/merchants/{merchantId}/offers/{offerId}/edit (body CreateOfferRequest): the old offer is removed exactly
+ * as Remove does and a new offer with the edited fields is created, in one transaction.
+ */
+export interface EditOfferResult {
+  offer: MerchantOffer;
+  replacedOfferId: string;
+  picksWithdrawn: number;
+}
+
+export type EditOfferResponse = ApiResponse<EditOfferResult>;

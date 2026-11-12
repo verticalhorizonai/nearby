@@ -26,7 +26,7 @@ export function ResetDemoButton({ onReset }: { onReset?: (r: ResetDemoResult) =>
     setBusy(true);
     try {
       const result = await api.post<ResetDemoResult>('/api/demo/reset', {});
-      toast.success('Demo reset. This browser’s proposals and purchases are removed and every appointment is on again.');
+      toast.success('Demo reset. This browser’s proposals, purchases and posted offers are removed and every appointment is on again.');
       onReset?.(result);
     } catch {
       toast.error('The demo did not reset. Try again in a moment.');
@@ -46,7 +46,9 @@ export function ResetDemoButton({ onReset }: { onReset?: (r: ResetDemoResult) =>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{RESET_DEMO_CONFIRM_PROMPT}</AlertDialogTitle>
-          <AlertDialogDescription>Sample merchants and offers stay. Every appointment is turned back on. Nothing is sent to PayPal.</AlertDialogDescription>
+          <AlertDialogDescription>
+            Sample merchants and offers stay; offers you posted are removed. Every appointment is turned back on. Nothing is sent to PayPal.
+          </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Keep them</AlertDialogCancel>

@@ -62,22 +62,23 @@ export class HandoffService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  private async parse(p: Partial<HandoffParams>): Promise<Parsed> {
+  /** The offer must be one this session may see: a seed offer or its own (build ruling 44). */
+  private async parse(sessionId: string, p: Partial<HandoffParams>): Promise<Parsed> {
     if (!isUuid(p.offer)) throw badRequest('offer must be an offer id.');
     const parsed = parseStop(p.lat, p.lng, p.at);
     if ('error' in parsed) throw badRequest(parsed.error.replace('starts_at', 'at'));
-    const facts = await loadOfferFacts(this.db, p.offer);
+    const facts = await loadOfferFacts(this.db, p.offer, sessionId);
     if (!facts) throw notFound('No offer exists with this id.');
     return { facts, stop: parsed.stop, title: cleanTitle(p.title) };
   }
 
   /** GET /api/handoff: what the page shows. Reads only; writes nothing. */
-  async preview(p: Partial<HandoffParams>): Promise<HandoffPreview> {
-    const { facts, stop, title } = await this.parse(p);
+  async preview(sessionId: string, p: Partial<HandoffParams>): Promise<HandoffPreview> {
+    const { facts, stop, title } = await this.parse(sessionId, p);
     let note: string | null = null;
     if (!inDemoArea(stop.location)) note = OUT_OF_AREA_NOTE;
     else if (!inWindow(stop.startsAt, this.now())) note = TIME_PASSED_NOTE;
-    else if (!showable((await matchStop(this.db, stop)).candidates, facts.id)) note = NO_LONGER_FITS_NOTE;
+    else if (!showable((await matchStop(this.db, stop, sessionId)).candidates, facts.id)) note = NO_LONGER_FITS_NOTE;
     return {
       offerId: facts.id,
       offerTitle: facts.title,
@@ -101,7 +102,7 @@ export class HandoffService {
     if (!this.limiter.take(sessionId)) {
       throw new ApiError(429, 'rate_limited', `At most ${HANDOFFS_PER_SESSION_PER_HOUR} handoffs an hour from one browser. Try again later.`);
     }
-    const { facts, stop, title } = await this.parse(p);
+    const { facts, stop, title } = await this.parse(sessionId, p);
     if (!inDemoArea(stop.location)) throw badRequest(OUT_OF_AREA_NOTE);
     const eventId = handoffEventId(facts.id, stop);
     const now = this.now();
@@ -132,7 +133,7 @@ export class HandoffService {
             [sessionId, appointmentId],
           )
         : { rows: [] };
-      const match = await matchStop(this.db, stop, new Set(bought.rows.map((r) => r.offer_id)));
+      const match = await matchStop(this.db, stop, sessionId, new Set(bought.rows.map((r) => r.offer_id)));
       const candidate = showable(match.candidates, facts.id);
       if (!candidate) throw new ApiError(409, 'offer_unavailable', NO_LONGER_FITS_NOTE);
 

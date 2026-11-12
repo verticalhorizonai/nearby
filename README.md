@@ -36,6 +36,10 @@ post offers in a simple dashboard and watch sales arrive.
   error or a 20-second timeout, output that fails the checks, or a rate limit reached (30 requests per browser per
   hour, 300 in all), picks are the top two by score with a templated reason. With no Google key, the map is a drawn
   plot of the appointment and Nearby's own merchants.
+- **Merchants.** Any visitor can open a sample merchant's dashboard and post an offer. A posted offer belongs to the
+  browser that posted it: it is shown, matched for picks and sold only there, and only that browser can edit or
+  remove it. The eight sample offers are shared and stay as they are. Removing or editing an offer never changes a
+  past sale or receipt; Reset demo removes the offers that browser posted.
 - **Every outside service is behind one adapter** (PayPal, Anthropic, Google Places), each with recorded fixtures.
   The automated tests use the fixtures only and never call a live service.
 

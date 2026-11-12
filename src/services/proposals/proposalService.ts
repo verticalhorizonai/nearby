@@ -22,6 +22,7 @@ export class ProposalService {
       await applyLazyTransitions(tx, now, { sessionId, proposalId });
       const p = (await loadProposal(tx, sessionId, proposalId))!;
       if (p.status === 'declined' || p.status === 'expired') throw badRequest(`This pick is ${p.status} and cannot be accepted.`);
+      if (p.offer_removed_at) throw badRequest('The merchant removed this offer.'); // build ruling 44
       const { token, hash, expiresAt } = mintToken(now);
       await tx.query(
         `UPDATE proposals SET status = 'accepted', confirm_token_hash = $3, confirm_token_expires_at = $4, confirm_token_used_at = NULL

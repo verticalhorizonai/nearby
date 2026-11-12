@@ -148,7 +148,10 @@ CREATE TABLE IF NOT EXISTS merchants (
 -- Source: REQ-04-02, REQ-04-03, REQ-02-06, REQ-02-07, REQ-03-01, REQ-06-01
 --
 -- Offers are live from the moment they are published. There is NO status column.
--- There is no HTTP edit or delete. UpdateOfferRequest is used for the seed upsert only.
+-- Build ruling 44: an offer posted through the demo belongs to the session that posted it (owner_session_id) and is
+-- seen, matched and handed over only there; the seed offers (owner NULL) stay shared. Remove marks removed_at and
+-- never deletes a row a proposal or purchase points at; an edit marks the old row removed and inserts a new one.
+-- UpdateOfferRequest is used for the seed upsert only.
 -- category is OfferCategory = string, so there is NO enum CHECK. The backend validates it.
 -- valid_days is DayOfWeek[]. The application rejects duplicate days.
 -- Any comparison of regular_price_cents against price_cents lives in the REQ-04-03 validator.
@@ -168,6 +171,8 @@ CREATE TABLE IF NOT EXISTS offers (
   is_deposit           BOOLEAN     NOT NULL DEFAULT FALSE,              -- isDeposit
   created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),              -- createdAt
   updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),              -- updatedAt (trigger-maintained)
+  owner_session_id     VARCHAR(64) NULL,                                -- the browser session that posted it; NULL = a seed offer, shared (build ruling 44, migration 002)
+  removed_at           TIMESTAMPTZ NULL,                                -- set when removed or replaced by an edit; never listed or matched after (build ruling 44, migration 002)
 
   CONSTRAINT pk_offers PRIMARY KEY (id),
   CONSTRAINT fk_offers_merchant FOREIGN KEY (merchant_id)

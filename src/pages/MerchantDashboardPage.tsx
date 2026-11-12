@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import type { MerchantDashboard, Offer } from '@/shared/types';
+import type { MerchantDashboard, MerchantOffer } from '@/shared/types';
 import { PageShell } from '@/components/layout/PageShell';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { MerchantProfileCard } from '@/components/merchant/MerchantProfileCard';
@@ -23,6 +23,8 @@ export function MerchantDashboardPage() {
   const dash = useApiQuery<MerchantDashboard>(`/api/merchants/${encodeURIComponent(merchantId)}/dashboard`);
   const { seat, setSeat } = useSeat();
   const [formOpen, setFormOpen] = useState(false);
+  /** The offer the form edits, when it edits one (build ruling 44). */
+  const [editing, setEditing] = useState<MerchantOffer | null>(null);
   const [freshId, setFreshId] = useState<string | null>(null);
   const merchant = dash.data?.merchant;
 
@@ -34,11 +36,23 @@ export function MerchantDashboardPage() {
     }
   }, [merchant, seat, setSeat]);
 
-  const onPublished = (offer: Offer) => {
-    dash.setData((prev) => (prev ? { ...prev, offers: [offer, ...prev.offers.filter((o) => o.id !== offer.id)] } : prev));
+  const onPublished = (offer: MerchantOffer, replacedOfferId?: string) => {
+    dash.setData((prev) =>
+      prev ? { ...prev, offers: [offer, ...prev.offers.filter((o) => o.id !== offer.id && o.id !== replacedOfferId)] } : prev,
+    );
     setFreshId(offer.id);
     setFormOpen(false);
-    toast.success(`Offer published: ${offer.title}. It is live now.`);
+    setEditing(null);
+    toast.success(replacedOfferId ? `Offer updated: ${offer.title}. It is live now.` : `Offer published: ${offer.title}. It is live now.`);
+  };
+  const onRemoved = (offerId: string) => dash.setData((prev) => (prev ? { ...prev, offers: prev.offers.filter((o) => o.id !== offerId) } : prev));
+  const onEdit = (offer: MerchantOffer) => {
+    setEditing(offer);
+    setFormOpen(true);
+  };
+  const closeForm = () => {
+    setFormOpen(false);
+    setEditing(null);
   };
 
   if (dash.error) {
@@ -77,11 +91,11 @@ export function MerchantDashboardPage() {
           </div>
           {formOpen && (
             <div className="rounded-panel border border-border bg-background p-4 sm:p-5">
-              <OfferForm merchantId={merchantId} onPublished={onPublished} onCancel={() => setFormOpen(false)} />
+              <OfferForm key={editing?.id ?? 'new'} merchantId={merchantId} onPublished={onPublished} onCancel={closeForm} editing={editing ?? undefined} />
             </div>
           )}
           {dash.data ? (
-            <OffersList offers={dash.data.offers} freshId={freshId} />
+            <OffersList offers={dash.data.offers} freshId={freshId} merchantId={merchantId} onEdit={onEdit} onRemoved={onRemoved} />
           ) : (
             <div className="flex flex-col gap-2.5" aria-busy="true" aria-label="Loading offers">
               <Skeleton className="h-[68px] rounded-panel" />

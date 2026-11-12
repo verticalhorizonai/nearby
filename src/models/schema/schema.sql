@@ -213,12 +213,13 @@ CREATE INDEX IF NOT EXISTS idx_offers_merchant_created
 --
 -- Allowed status transitions (service layer, guarded UPDATE ... WHERE status = <from>):
 --   proposed -> accepted   (Yes; a confirmation token is minted)
---   proposed -> declined   (Not now; final; nothing is created at PayPal)
+--   proposed -> declined   (Not now; nothing is created at PayPal)
+--   declined -> proposed   (Show hidden picks, before expiry; build ruling 40)
 --   accepted -> proposed   (cancel at PayPal, failed capture, or token expired unused)
 --   proposed | accepted -> expired   (now() - created_at >= PROPOSAL_EXPIRY_MS = 10800000, spec 3.9.1;
 --                                     never while a completed purchase exists, build ruling 7)
 --
--- declined and expired are terminal.
+-- expired is terminal.
 -- After a completed purchase the proposal remains 'accepted'.
 -- reason (<= PICK_REASON_MAX_WORDS = 25 words, one sentence) is validated in code before insert.
 -- created_at is the expiry clock (spec 3.9.1; build ruling 12, G-12).

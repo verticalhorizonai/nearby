@@ -28,7 +28,8 @@ export type EveryVariable = 'DATABASE_URL' | 'APP_BASE_URL' | 'ANTHROPIC_API_KEY
 // Neither agent may define its own variants.
 // ============================================================================
 
-/** Proposal lifecycle (REQ-03-12). 'declined' is final. */
+/** Proposal lifecycle (REQ-03-12). 'expired' is final; 'declined' returns to 'proposed' when the shopper asks to see
+ * the stop's hidden picks again (build ruling 40, amending spec 3.9.1). */
 export type ProposalStatus = 'proposed' | 'accepted' | 'declined' | 'expired';
 
 /** Purchase lifecycle (REQ-03-12): created -> approved -> completed, or failed. */
@@ -499,7 +500,8 @@ export interface CreateProposalRequest {
 /**
  * Internal: lifecycle transitions only.
  *  - proposed -> accepted (Yes)
- *  - proposed -> declined (Not now; final)
+ *  - proposed -> declined (Not now)
+ *  - declined -> proposed (Show hidden picks, before expiry; build ruling 40)
  *  - accepted -> proposed (cancel at PayPal, or token expired unused)
  *  - proposed or accepted -> expired (3 hours after creation; never with a completed purchase, build ruling 7)
  */
@@ -540,6 +542,18 @@ export interface AppointmentPicks {
 }
 
 export type AppointmentPicksResponse = ApiResponse<AppointmentPicks>;
+
+/**
+ * POST /api/appointments/{appointmentId}/picks/restore (build ruling 40): this session's declined, unexpired picks for
+ * the appointment return to 'proposed'. Idempotent; never runs the agent, never counts toward the rate limit, never
+ * calls an outside service. The result is the appointment's picks afterwards, in their original order.
+ */
+export interface RestoreHiddenPicksResult extends AppointmentPicks {
+  /** How many declined picks this call brought back (0 when none were hidden). */
+  restored: number;
+}
+
+export type RestoreHiddenPicksResponse = ApiResponse<RestoreHiddenPicksResult>;
 
 /** Response to "Not now" (REQ-03-02). The proposal becomes 'declined' and nothing is created at PayPal. */
 export type DeclineProposalResponse = ApiResponse<Proposal>;

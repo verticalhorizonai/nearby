@@ -12,6 +12,11 @@ export function registerPurchaseRoutes(app: FastifyInstance, s: AppServices): vo
   app.get<{ Params: { appointmentId: string } }>('/api/appointments/:appointmentId/map', async (req, reply) =>
     ok(reply, await s.map.mapData(req.sessionId, requireUuid(req.params.appointmentId, 'appointmentId'))),
   );
+  // Show hidden picks again (build ruling 40). A POST, so the origin rule applies; it is not the agent endpoint, so it
+  // never counts toward the rate limit and never starts a run.
+  app.post<{ Params: { appointmentId: string } }>('/api/appointments/:appointmentId/picks/restore', async (req, reply) =>
+    ok(reply, await s.proposals.restoreDeclined(req.sessionId, requireUuid(req.params.appointmentId, 'appointmentId'))),
+  );
   app.post<{ Params: { proposalId: string } }>('/api/proposals/:proposalId/accept', async (req, reply) =>
     ok(reply, await s.proposals.accept(req.sessionId, requireUuid(req.params.proposalId, 'proposalId'))),
   );

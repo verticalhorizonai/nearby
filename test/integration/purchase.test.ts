@@ -207,6 +207,71 @@ describe('the receipt of a bought pick, shown again (build ruling 38)', () => {
   });
 });
 
+describe('showing hidden picks again (build ruling 40)', () => {
+  const restore = (title: string, session = 'a', headers: Record<string, string> = {}) =>
+    t.request('POST', `/api/appointments/${ids[title]}/picks/restore`, {}, headers, session);
+  const shape = (p: { proposalId: string; offerId: string; reason: string; score: number; status: string }) => ({ id: p.proposalId, offer: p.offerId, reason: p.reason, score: p.score, status: p.status });
+
+  it('decline then restore: the same pick returns as proposed, with the same offer, reason and score, in its order; idempotent', async () => {
+    const d = await picksFor('Client meeting');
+    const before = d.picks.map(shape);
+    await t.request('POST', `/api/proposals/${d.picks[0].proposalId}/decline`);
+    const r = await restore('Client meeting');
+    expect(r.status).toBe(200);
+    expect(r.json.data.restored).toBe(1);
+    expect(r.json.data.picks.map(shape)).toEqual(before);
+    expect((await restore('Client meeting')).json.data.restored).toBe(0);
+    const again = await picksFor('Client meeting');
+    expect(again.picks.map(shape)).toEqual(before);
+    // and it can be accepted like any proposed pick
+    expect((await t.request('POST', `/api/proposals/${d.picks[0].proposalId}/accept`)).status).toBe(200);
+  });
+
+  it('another session cannot restore it; a cross-origin POST is refused', async () => {
+    const d = await picksFor('Client meeting');
+    await t.request('POST', `/api/proposals/${d.picks[0].proposalId}/decline`);
+    expect((await restore('Client meeting', 'b')).status).toBe(404);
+    expect((await restore('Client meeting', 'a', { origin: 'https://evil.example' })).status).toBe(403);
+    expect((await t.db.query('SELECT status FROM proposals WHERE id = $1', [d.picks[0].proposalId])).rows[0].status).toBe('declined');
+  });
+
+  it('a declined pick past its expiry (3 hours after creation) is not restored', async () => {
+    const d = await picksFor('Client meeting');
+    await t.request('POST', `/api/proposals/${d.picks[0].proposalId}/decline`);
+    t.clock.set(new Date(t.clock.now().getTime() + 3 * 3_600_000));
+    const r = await restore('Client meeting');
+    expect(r.json.data.restored).toBe(0);
+    expect((await t.db.query('SELECT status FROM proposals WHERE id = $1', [d.picks[0].proposalId])).rows[0].status).not.toBe('proposed');
+    t.clock.set(new Date('2026-11-16T15:00:00Z'));
+  });
+
+  it('a bought or accepted pick is untouched; only the declined one comes back', async () => {
+    const d = await picksFor('Client meeting');
+    const [a, b] = d.picks.map((p: { proposalId: string }) => p.proposalId);
+    await t.request('POST', `/api/proposals/${b}/decline`);
+    const token = (await t.request('POST', `/api/proposals/${a}/accept`)).json.data.confirmationToken;
+    await t.request('POST', '/api/purchases', { proposalId: a, confirmationToken: token });
+    await t.request('POST', `/api/pay/return/${a}`);
+    const r = await restore('Client meeting');
+    expect(r.json.data.restored).toBe(1);
+    const byId = Object.fromEntries(r.json.data.picks.map((p: { proposalId: string; status: string; purchased: boolean }) => [p.proposalId, [p.status, p.purchased]]));
+    expect(byId[a]).toEqual(['accepted', true]);
+    expect(byId[b]).toEqual(['proposed', false]);
+  });
+
+  it('makes no agent run, no rate-limit count and no outbound call', async () => {
+    const d = await picksFor('Client meeting');
+    await t.request('POST', `/api/proposals/${d.picks[0].proposalId}/decline`);
+    const proposals = (await t.db.query('SELECT count(*)::int AS n FROM proposals')).rows[0].n;
+    const counts = t.app.services.rateLimiter.counts('unused');
+    const outbound = t.paypalTransport.calls.length;
+    await restore('Client meeting');
+    expect((await t.db.query('SELECT count(*)::int AS n FROM proposals')).rows[0].n).toBe(proposals); // no new run
+    expect(t.app.services.rateLimiter.counts('unused').global).toBe(counts.global);
+    expect(t.paypalTransport.calls.length).toBe(outbound);
+  });
+});
+
 describe('the token gate: 403 and nothing at PayPal', () => {
   const orders = () => t.paypalTransport.calls.filter((c) => c.url.endsWith('/v2/checkout/orders')).length;
 

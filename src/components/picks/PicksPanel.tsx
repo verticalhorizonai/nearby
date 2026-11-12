@@ -3,12 +3,13 @@
 // agent", the no-match message, Yes -> confirm sheet -> Pay with PayPal, and Not now. A declined pick is hidden.
 import { useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
-import type { AcceptProposalResult, AppointmentPicks, Pick, Proposal, StartPaymentResult } from '@/shared/types';
+import type { AcceptProposalResult, AppointmentPicks, Pick, Proposal, RestoreHiddenPicksResult, StartPaymentResult } from '@/shared/types';
 import { NO_MATCH_MESSAGE, PAYMENT_FAILED_MESSAGE } from '@/shared/types';
 import { api, isApiError, useApiQuery } from '@/hooks/useApi';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { savePendingPayment } from '@/client/pendingPayment';
 import { ErrorState } from '@/components/feedback/ErrorState';
+import { Button } from '@/components/ui/button';
 import { ConfirmPurchase } from './ConfirmPurchase';
 import { PickCard, PickCardSkeleton } from './PickCard';
 
@@ -42,6 +43,9 @@ export function PicksPanel({ appointmentId, redirect = (url) => window.location.
   const [confirm, setConfirm] = useState<AcceptProposalResult | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  /** Read out by screen readers after a restore (build ruling 40). */
+  const [announce, setAnnounce] = useState('');
 
   const { data, error, loading, reload, setData } = picksQuery;
   const reducedMotion = useReducedMotion();
@@ -50,6 +54,21 @@ export function PicksPanel({ appointmentId, redirect = (url) => window.location.
     setData((prev) =>
       prev ? { ...prev, picks: prev.picks.map((p) => (p.proposalId === proposalId ? { ...p, status: 'declined' as const } : p)) } : prev,
     );
+
+  // Show hidden picks (build ruling 40): the stop's declined picks come back as ordinary picks, in their order.
+  const onRestore = async () => {
+    setRestoring(true);
+    try {
+      const result = await api.post<RestoreHiddenPicksResult>(`/api/appointments/${encodeURIComponent(appointmentId)}/picks/restore`);
+      setLeaving(new Set());
+      setData(() => ({ appointmentId: result.appointmentId, picks: result.picks, noMatch: result.noMatch }));
+      setAnnounce(result.restored === 1 ? '1 pick is shown again.' : `${result.restored} picks are shown again.`);
+    } catch {
+      toast('Could not show the hidden picks just now. Try again in a moment.');
+    } finally {
+      setRestoring(false);
+    }
+  };
 
   // Not now (F3.2; REQ-03-02): the pick fades out and is dismissed for this appointment. Nothing reaches PayPal.
   const onNotNow = async (pick: Pick) => {
@@ -135,7 +154,8 @@ export function PicksPanel({ appointmentId, redirect = (url) => window.location.
     } else if (data.picks.length === 0) {
       body = <PlainNote testId="picks-off">This appointment is turned off. Turn it on in My week to see picks.</PlainNote>;
     } else if (visible.length === 0) {
-      body = <PlainNote testId="picks-none-left">No picks left for this stop.</PlainNote>;
+      // Every pick was passed on: not the no-match message (build ruling 40).
+      body = <PlainNote testId="picks-all-passed">You passed on the picks for this stop.</PlainNote>;
     } else {
       body = (
         <div className="flex flex-col gap-3.5">
@@ -155,6 +175,7 @@ export function PicksPanel({ appointmentId, redirect = (url) => window.location.
     }
   }
 
+  const hiddenCount = data && !data.noMatch ? data.picks.filter((p) => p.status === 'declined').length : 0;
   const heading = visible.length === 2 ? 'Two picks for this stop' : visible.length === 1 ? 'One pick for this stop' : 'Picks for this stop';
   return (
     <section aria-labelledby="picks-heading" className="flex flex-col">
@@ -170,6 +191,21 @@ export function PicksPanel({ appointmentId, redirect = (url) => window.location.
         )}
       </div>
       {body}
+      {hiddenCount > 0 && (
+        <Button
+          type="button"
+          variant="secondary"
+          className="mt-3.5 self-center"
+          onClick={() => void onRestore()}
+          disabled={restoring}
+          data-testid="show-hidden-picks"
+        >
+          {hiddenCount === 1 ? 'Show 1 hidden pick' : `Show ${hiddenCount} hidden picks`}
+        </Button>
+      )}
+      <p className="sr-only" role="status" aria-live="polite" data-testid="picks-announce">
+        {announce}
+      </p>
       {visible.length > 0 && (
         <p className="pt-4 text-center text-[13px] text-secondary-text">Nothing is bought until you tap Yes and approve it on PayPal.</p>
       )}

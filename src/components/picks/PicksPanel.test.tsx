@@ -79,6 +79,56 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe('hidden picks shown again (build ruling 40)', () => {
+  const declined = (p: Pick): Pick => ({ ...p, status: 'declined' });
+  const restoreRoute = `POST /api/appointments/${APPT}/picks/restore`;
+
+  it('no control when nothing is hidden', async () => {
+    stubFetch({ [`GET /api/appointments/${APPT}/picks`]: ok(picks([p1, p2])) });
+    renderPanel();
+    await screen.findAllByTestId('pick-card');
+    expect(screen.queryByTestId('show-hidden-picks')).toBeNull();
+  });
+
+  it('one hidden: "Show 1 hidden pick" under the cards; the tap brings it back in its order, with Yes and Not now, and is announced', async () => {
+    let restoreCalls = 0;
+    stubFetch({
+      [`GET /api/appointments/${APPT}/picks`]: ok(picks([declined(p1), p2])),
+      [restoreRoute]: () => { restoreCalls++; return { status: 200, body: { success: true, data: { ...picks([p1, p2]), restored: 1 } } }; },
+    });
+    renderPanel();
+    expect(await screen.findAllByTestId('pick-card')).toHaveLength(1);
+    const control = screen.getByTestId('show-hidden-picks');
+    expect(control).toHaveTextContent('Show 1 hidden pick');
+    expect(control.className).toMatch(/min-h-touch|h-1[12]/);
+    expect(control.className).toMatch(/focus-visible:ring-2/);
+    fireEvent.click(control);
+    await waitFor(() => expect(screen.getAllByTestId('pick-card')).toHaveLength(2));
+    expect(restoreCalls).toBe(1);
+    const cards = screen.getAllByTestId('pick-card');
+    expect(cards[0]).toHaveTextContent('Saguaro Bean Co.');
+    expect(cards[1]).toHaveTextContent('Sonoran Print Shop');
+    expect(screen.getAllByRole('button', { name: /^Not now/ })).toHaveLength(2);
+    expect(screen.getByTestId('picks-announce')).toHaveTextContent('1 pick is shown again.');
+    expect(screen.queryByTestId('show-hidden-picks')).toBeNull();
+  });
+
+  it('all passed on: its own line (not the no-match message) and "Show 2 hidden picks"', async () => {
+    stubFetch({ [`GET /api/appointments/${APPT}/picks`]: ok(picks([declined(p1), declined(p2)])) });
+    renderPanel();
+    expect(await screen.findByTestId('picks-all-passed')).toHaveTextContent('You passed on the picks for this stop.');
+    expect(screen.queryByText('Nothing nearby fits this one')).toBeNull();
+    expect(screen.getByTestId('show-hidden-picks')).toHaveTextContent('Show 2 hidden picks');
+  });
+
+  it('the no-match message stays for a stop where the agent found nothing, with no control', async () => {
+    stubFetch({ [`GET /api/appointments/${APPT}/picks`]: ok(picks([], true)) });
+    renderPanel();
+    expect(await screen.findByText('Nothing nearby fits this one')).toBeInTheDocument();
+    expect(screen.queryByTestId('show-hidden-picks')).toBeNull();
+  });
+});
+
 describe('PicksPanel label above the cards (ruling 25)', () => {
   it('reads "Chosen by the agent" when the agent chose the picks', async () => {
     stubFetch({ [`GET /api/appointments/${APPT}/picks`]: ok(picks([p1, p2])) });

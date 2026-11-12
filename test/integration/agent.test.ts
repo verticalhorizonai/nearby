@@ -82,6 +82,18 @@ describe('one run per appointment, fewer turns (prefetch; ruling 32)', () => {
     expect((await t.db.query(`SELECT count(*)::int AS n FROM proposals`)).rows[0].n).toBe(2);
   });
 
+  it('restoring hidden picks never calls Claude, even with the agent on (build ruling 40)', async () => {
+    t.scriptAgent(transcript, ids['Client meeting']);
+    const d = await picks();
+    await t.request('POST', `/api/proposals/${d.picks[0].proposalId}/decline`);
+    const calls = t.anthropicTransport.calls.length;
+    const r = await t.request('POST', `/api/appointments/${ids['Client meeting']}/picks/restore`, {});
+    expect(r.json.data.restored).toBe(1);
+    expect(r.json.data.picks[0].source).toBe('agent');
+    expect(t.anthropicTransport.calls.length).toBe(calls);
+    expect(t.placesTransport.calls).toHaveLength(0);
+  });
+
   it('the instructions ask for independent tool calls in the same turn', () => {
     expect(SYSTEM_PROMPT).toContain('Make independent tool calls in the same turn: call find_places_near together with find_offer_candidates, and make both propose_offer calls together.');
   });

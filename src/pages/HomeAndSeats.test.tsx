@@ -138,7 +138,8 @@ describe('Choose a seat', () => {
     expect(tiles[0]).toHaveTextContent('Tue 9:30 AM');
     expect(tiles[0]).toHaveTextContent('Client meeting');
     expect(tiles[4]).toHaveTextContent('Thu 5:30 PM');
-    expect(screen.getByTestId('shopper-card')).toHaveAttribute('href', '/week');
+    expect(screen.getByTestId('open-the-week')).toHaveAttribute('href', '/week');
+    expect(tiles[0]).toHaveAccessibleName('Client meeting, Tue 9:30 AM: open this stop');
     expect(screen.getByText('Open the week')).toBeInTheDocument();
     const cards = screen.getAllByTestId('merchant-card');
     expect(cards).toHaveLength(8);
@@ -160,11 +161,74 @@ describe('Choose a seat', () => {
       'GET /api/config/public': ok({ repoUrl: null, googleMapsBrowserKey: null }),
     });
     renderAt('/seats');
-    fireEvent.click(await screen.findByTestId('shopper-card'));
+    fireEvent.click(await screen.findByTestId('open-the-week'));
     expect(await screen.findByRole('heading', { level: 1, name: 'My week' })).toBeInTheDocument();
     const calls = (fetchMock as unknown as { mock: { calls: [RequestInfo, RequestInit?][] } }).mock.calls.map(([u, i]) => `${i?.method ?? 'GET'} ${new URL(String(u), 'http://localhost').pathname}`);
     expect(calls).toContain('POST /api/calendar/demo-connection');
     expect(screen.queryByRole('button', { name: /use the demo calendar/i })).toBeNull();
+  });
+
+  it('a tile opens its own Stop page: seat, connect, resolve to this browser\'s appointment, prefetch the others (ruling 34)', async () => {
+    const appt = (id: string, title: string, startsAt: string, enabled = true) => ({
+      id, title, startsAt, endsAt: startsAt, address: 'Sample address, Tucson', location: { lat: 32.2318, lng: -110.9535 }, enabled,
+      createdAt: '2026-11-16T15:00:00.000Z', updatedAt: '2026-11-16T15:00:00.000Z',
+    });
+    const mine = [
+      appt('11111111-1111-4111-8111-111111111111', 'Client meeting', '2026-11-17T16:30:00.000Z'),
+      appt('22222222-2222-4222-8222-222222222222', 'Lunch with a partner', '2026-11-17T19:30:00.000Z'),
+      appt('33333333-3333-4333-8333-333333333333', 'Workshop', '2026-11-18T17:00:00.000Z', false),
+    ];
+    const noPicks = (id: string) => ok({ appointmentId: id, picks: [], noMatch: true });
+    const fetchMock = stubFetch({
+      'GET /api/seats': ok(seats),
+      'POST /api/calendar/demo-connection': ok({ calendarName: 'Demo calendar', upcomingAppointmentCount: 5, connectedAt: '2026-11-16T15:00:00.000Z' }),
+      'GET /api/appointments/upcoming': ok({ appointments: mine, skippedEvents: [] }),
+      [`GET /api/appointments/${mine[1].id}/picks`]: noPicks(mine[1].id),
+      [`GET /api/appointments/${mine[0].id}/picks`]: noPicks(mine[0].id),
+      'GET /api/config/public': ok({ repoUrl: null, googleMapsBrowserKey: null }),
+    });
+    renderAt('/seats');
+    fireEvent.click(await screen.findByRole('button', { name: 'Lunch with a partner, Tue 12:30 PM: open this stop' }));
+    const calls = () => (fetchMock as unknown as { mock: { calls: [RequestInfo, RequestInit?][] } }).mock.calls.map(([u, i]) => `${i?.method ?? 'GET'} ${new URL(String(u), 'http://localhost').pathname}`);
+    // the Stop page of this browser's appointment for that tile loads its map and its picks
+    await waitFor(() => expect(calls()).toContain(`GET /api/appointments/${mine[1].id}/map`));
+    expect(calls()).toContain('POST /api/calendar/demo-connection');
+    expect(calls()).toContain(`GET /api/appointments/${mine[1].id}/picks`);
+    // the other appointment that is on is prefetched; the one turned off is not
+    expect(calls()).toContain(`GET /api/appointments/${mine[0].id}/picks`);
+    expect(calls()).not.toContain(`GET /api/appointments/${mine[2].id}/picks`);
+    expect(JSON.parse(window.localStorage.getItem('nearby.seat') ?? '{}').seat).toBe('shopper');
+  });
+
+  it('a tile that cannot be resolved falls back to My week', async () => {
+    stubFetch({
+      'GET /api/seats': ok(seats),
+      'POST /api/calendar/demo-connection': ok({ calendarName: 'Demo calendar', upcomingAppointmentCount: 0, connectedAt: '2026-11-16T15:00:00.000Z' }),
+      'GET /api/calendar/connection': ok({ calendarName: 'Demo calendar', upcomingAppointmentCount: 0, connectedAt: '2026-11-16T15:00:00.000Z' }),
+      'GET /api/appointments/upcoming': ok({ appointments: [], skippedEvents: [] }),
+      'GET /api/config/public': ok({ repoUrl: null, googleMapsBrowserKey: null }),
+    });
+    renderAt('/seats');
+    fireEvent.click(await screen.findByRole('button', { name: 'Dinner, Thu 5:30 PM: open this stop' }));
+    expect(await screen.findByRole('heading', { level: 1, name: 'My week' })).toBeInTheDocument();
+  });
+
+  it('the shopper card is a plain container: six separate controls, none inside another (ruling 34)', async () => {
+    stubFetch({ 'GET /api/seats': ok(seats) });
+    renderAt('/seats');
+    await screen.findAllByTestId('appointment-tile');
+    const card = screen.getByTestId('shopper-card');
+    expect(card.tagName).toBe('DIV');
+    expect(card.matches('a, button, [role="button"], [role="link"]')).toBe(false);
+    const controls = card.querySelectorAll('a, button, [role="button"], [role="link"]');
+    expect(controls).toHaveLength(6);
+    controls.forEach((c) => {
+      expect(c.querySelector('a, button, [role="button"], [role="link"]')).toBeNull();
+      expect(c.className).toMatch(/min-h-touch/);
+      expect(c.className).toMatch(/focus-visible:ring-2/);
+      expect(c.className).toMatch(/hover:/);
+    });
+    expect(screen.getByText('A shopper\u2019s week').closest('a')).toBeNull();
   });
 
   it('a merchant card puts the visitor in that merchant seat', async () => {
